@@ -1,6 +1,7 @@
 import type { Combatant, EncounterAction, EncounterState, Health, PlayerCombatant, PlayerRequest, PlayerView } from '../shared/types.js';
 import { CONDITIONS, EncounterError } from '../encounter/rules.js';
 import { playersMap } from '../shared/battlemap.js';
+import { clipToRevealed } from '../shared/mapSight.js';
 
 /** How hurt a monster looks: down at 0, bloodied at half or less (the usual table call). */
 export function healthOf(c: Combatant): Health | null {
@@ -44,9 +45,18 @@ export function playerView(s: EncounterState, me: string | null): PlayerView {
     party: s.combatants.filter(pc).map((c) => ({ id: c.id, name: c.name, taken: taken.has(c.id) })),
     myInitiative: mine?.initiative ?? null,
     myAc: mine?.ac ?? null,
-    map: s.map ? playersMap(s.map, new Set(s.combatants.filter((c) => c.hidden && c.tokenId).map((c) => c.tokenId!))) : null,
+    map: s.map ? clipped(s) : null,
     tokens: Object.fromEntries(order.filter((c) => c.tokenId).map((c) => [c.id, c.tokenId!])),
+    fog: s.map && s.fog ? s.fog.revealed : null,
+    // An area under the fog would give away what's there: players see only those they could see.
+    templates: (s.templates ?? []).filter((t) => !s.fog || s.fog.revealed.includes(`${Math.min(t.at[0], (s.map?.width ?? 1) - 1)},${Math.min(t.at[1], (s.map?.height ?? 1) - 1)}`)),
   };
+}
+
+/** The players' copy of the map: their rules (playersMap), then cut to what the fog has revealed. */
+function clipped(s: EncounterState) {
+  const map = playersMap(s.map!, new Set(s.combatants.filter((c) => c.hidden && c.tokenId).map((c) => c.tokenId!)));
+  return s.fog ? clipToRevealed(map, new Set(s.fog.revealed)) : map;
 }
 
 /** A player's request as a tracker action, if they may make it: only on their own PC. */
@@ -68,6 +78,10 @@ export function playerAction(s: EncounterState, me: string | null, request: Play
     case 'move':
       if (!mine.tokenId) throw new EncounterError('You’re not on the map yet: ask the DM to place you');
       return { type: 'move', token: mine.tokenId, at: request.at };
+    case 'template':
+      return { type: 'template', template: { ...request.template, label: mine.name }, by: mine.id };
+    case 'clearTemplate':
+      return { type: 'clearTemplate', id: request.id, by: mine.id };
     default:
       throw new EncounterError('Unknown request');
   }

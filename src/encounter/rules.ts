@@ -1,4 +1,5 @@
-import { blankMap, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap } from '../shared/battlemap.js';
+import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell } from '../shared/battlemap.js';
+import { cellKey, readTemplate, roomAt, roomCells, visibleFrom } from '../shared/mapSight.js';
 import type { Combatant, CombatantKind, Condition, ConditionName, EncounterAction, EncounterOutcome, EncounterState } from '../shared/types.js';
 
 /** The 2024 conditions, in the order the tracker lists them. */
@@ -289,10 +290,82 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       s.map = asEncounterError(() => blankMap(action.width, action.height));
       break;
     }
+    case 'secretDoor':
+      s.map = onMap(s, (m) => findSecretDoor(m, action.index));
+      log('A secret door is found');
+      break;
+    case 'fog': {
+      if (!s.map) throw new EncounterError('This encounter has no map');
+      if (!action.on) delete s.fog;
+      else s.fog = { revealed: s.fog?.revealed ?? [], follow: action.follow ?? s.fog?.follow ?? true };
+      break;
+    }
+    case 'fogCells': {
+      const fog = requireFog(s);
+      if (!Array.isArray(action.cells) || action.cells.length > 10_000) throw new EncounterError('Send the squares to reveal');
+      setRevealed(fog, action.cells.filter(isMapCell(s.map!)), !action.hide);
+      break;
+    }
+    case 'fogRoom': {
+      const fog = requireFog(s);
+      const room = roomAt(s.map!, action.at);
+      if (!room) throw new EncounterError('That square isn’t in a room');
+      setRevealed(fog, roomCells(s.map!, room), !action.hide);
+      break;
+    }
+    case 'template': {
+      if (!s.map) throw new EncounterError('This encounter has no map');
+      const map = s.map;
+      const template = (() => {
+        try {
+          return readTemplate(action.template, map);
+        } catch (err) {
+          throw new EncounterError((err as Error).message);
+        }
+      })();
+      const by = action.by ?? 'dm';
+      // One area per person at a time: placing a new one moves it.
+      s.templates = [...(s.templates ?? []).filter((t) => t.by !== by), { ...template, id: `${by}-${deps.now()}`, by }];
+      break;
+    }
+    case 'clearTemplate': {
+      const keep = (s.templates ?? []).filter((t) => (action.id ? t.id !== action.id : action.by ? t.by !== action.by : false));
+      if (action.by && action.id && !(s.templates ?? []).some((t) => t.id === action.id && t.by === action.by)) throw new EncounterError('That isn’t your area');
+      s.templates = keep;
+      break;
+    }
     default:
       throw new EncounterError('Unknown action');
   }
+  // Fog that follows the party: reveal what their tokens can see after anything that changes it.
+  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal'].includes(action.type)) revealPartySight(s);
   return s;
+}
+
+function requireFog(s: EncounterState): NonNullable<EncounterState['fog']> {
+  if (!s.map || !s.fog) throw new EncounterError('Turn on fog of war first');
+  return s.fog;
+}
+
+const isMapCell = (map: BattleMap) => (c: unknown): c is Cell => Array.isArray(c) && c.length === 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]) && c[0] >= 0 && c[1] >= 0 && c[0] < map.width && c[1] < map.height;
+
+function setRevealed(fog: NonNullable<EncounterState['fog']>, cells: readonly Cell[], on: boolean): void {
+  const revealed = new Set(fog.revealed);
+  for (const c of cells) {
+    if (on) revealed.add(cellKey(c));
+    else revealed.delete(cellKey(c));
+  }
+  fog.revealed = [...revealed];
+}
+
+/** Adds what the party's tokens can see to the revealed squares. */
+function revealPartySight(s: EncounterState): void {
+  const map = s.map!;
+  const pcTokens = new Set(s.combatants.filter((c) => c.kind === 'pc' && c.tokenId).map((c) => c.tokenId!));
+  const eyes = map.tokens.filter((t) => pcTokens.has(t.id) || (t.kind === 'pc' && !s.combatants.some((c) => c.tokenId === t.id))).flatMap((t) => footprint(t.at, t.size));
+  if (!eyes.length) return;
+  const seen = visibleFrom(map, eyes);
+  s.fog!.revealed = [...new Set([...s.fog!.revealed, ...seen])];
 }
 
 /** Applies a map change, as an EncounterError when the map refuses it. */

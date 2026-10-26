@@ -3,6 +3,7 @@
  * (web/src/types.ts) imports these same definitions instead of keeping copies.
  */
 import type { BattleMap, Cell } from './battlemap.js';
+import type { AreaTemplate } from './mapSight.js';
 import type { Config } from '../config/schema.js';
 
 export type { Config };
@@ -489,6 +490,13 @@ export interface EncounterState {
   statBlocks: Record<string, EncounterStatBlock>;
   /** The battle map (the wiki's format, as this app reads it), with tokens where they stand now. */
   map: BattleMap | null;
+  /**
+   * Fog of war (#55): players see only revealed squares. `follow` reveals whatever the party's
+   * tokens can see as they move.
+   */
+  fog?: { revealed: string[]; follow: boolean };
+  /** Spell areas on the map, shown to everyone. */
+  templates?: PlacedTemplate[];
   startedAt: number;
   endedAt?: number;
   log: EncounterLogEntry[];
@@ -545,7 +553,18 @@ export type EncounterAction =
   | { type: 'door'; index: number; state: 'open' | 'closed' | 'locked' }
   | { type: 'difficult'; at: Cell; on: boolean }
   /** An empty map, for an encounter without one. */
-  | { type: 'newMap'; width: number; height: number };
+  | { type: 'newMap'; width: number; height: number }
+  /** The party found a secret door (its index in `terrain`): it becomes a closed door. */
+  | { type: 'secretDoor'; index: number }
+  /** Fog of war on or off, and whether it follows what the party sees. */
+  | { type: 'fog'; on: boolean; follow?: boolean }
+  /** Reveals (or hides again) squares, or the room a square is in. */
+  | { type: 'fogCells'; cells: Cell[]; hide?: boolean }
+  | { type: 'fogRoom'; at: Cell; hide?: boolean }
+  /** A spell area; `by` is set for a player's (the DM's are "dm"). */
+  | { type: 'template'; template: AreaTemplate; by?: string }
+  /** Removes one spell area, or all of them; with `by`, only that person's. */
+  | { type: 'clearTemplate'; id?: string; by?: string };
 
 // --- The player view (the public join link) ------------------------------------------------------
 
@@ -587,7 +606,13 @@ export interface PlayerView {
   map: BattleMap | null;
   /** Visible combatant id → its token on the map. */
   tokens: Record<string, string>;
+  /** Fog of war: the squares revealed (the map has nothing outside them), or null when it's off. */
+  fog: string[] | null;
+  templates: PlacedTemplate[];
 }
+
+/** A spell area on the map: who placed it ("dm" or a combatant id). */
+export type PlacedTemplate = AreaTemplate & { id: string; by: string };
 
 /** What a player may change, and only on their own PC. */
 export type PlayerRequest =
@@ -595,7 +620,10 @@ export type PlayerRequest =
   | { type: 'damage' | 'heal' | 'tempHp'; amount: number }
   | { type: 'condition'; name: ConditionName; remove?: boolean }
   /** Moves my own token. */
-  | { type: 'move'; at: Cell };
+  | { type: 'move'; at: Cell }
+  /** Shows a spell area for everyone; I can remove only mine. */
+  | { type: 'template'; template: AreaTemplate }
+  | { type: 'clearTemplate'; id: string };
 
 /**
  * The pictures a battle map gets from the art folder (#61), by asset id: the ground, floor and

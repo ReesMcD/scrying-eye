@@ -26,6 +26,17 @@ export interface Terrain {
   ground?: string;
   /** Overrides whether it blocks line of sight; never changes movement. */
   blocks_sight?: boolean;
+  /** On a wall: a secret door. A wall in every way until found; never sent to players. */
+  secret?: 'door';
+}
+
+/** A keyed area (a dungeon's room): DM information, left out of players' copies. */
+export interface Room {
+  id: string;
+  name?: string;
+  cells?: Cell[];
+  rect?: [number, number, number, number];
+  polygon?: Cell[];
 }
 
 export interface Decal {
@@ -60,6 +71,7 @@ export interface BattleMap {
   terrain: Terrain[];
   tokens: MapToken[];
   notes: Array<{ at: Cell; text: string }>;
+  rooms?: Room[];
 }
 
 export const SIZE_SQUARES: Record<TokenSize, number> = { tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 };
@@ -85,6 +97,9 @@ export function readMap(raw: unknown): BattleMap | null {
     .filter((t): t is MapToken => !!t && typeof t === 'object' && typeof (t as MapToken).id === 'string' && typeof (t as MapToken).name === 'string' && isCell((t as MapToken).at))
     .map((t) => ({ ...t, size: t.size in SIZE_SQUARES ? t.size : 'medium', kind: t.kind === 'pc' || t.kind === 'npc' ? t.kind : 'monster' }) as MapToken);
   const notes = (Array.isArray(r.notes) ? r.notes : []).filter((n): n is { at: Cell; text: string } => !!n && isCell((n as { at: unknown }).at) && typeof (n as { text: unknown }).text === 'string');
+  const rooms = (Array.isArray(r.rooms) ? r.rooms : []).filter(
+    (x): x is Room => !!x && typeof x === 'object' && typeof (x as Room).id === 'string' && (Array.isArray((x as Room).cells) || Array.isArray((x as Room).rect) || Array.isArray((x as Room).polygon)),
+  );
   const bg = r.background as BattleMap['background'] | undefined;
   const art = r.art && typeof r.art === 'object' ? (r.art as Record<string, unknown>) : undefined;
   const decals = (Array.isArray(art?.decals) ? art.decals : []).filter((d): d is Decal => !!d && typeof (d as Decal).asset === 'string' && isCell((d as Decal).at));
@@ -98,6 +113,7 @@ export function readMap(raw: unknown): BattleMap | null {
     terrain,
     tokens,
     notes,
+    ...(rooms.length ? { rooms } : {}),
   };
 }
 
@@ -174,7 +190,10 @@ export function isDifficult(map: BattleMap, at: Cell): boolean {
   return map.terrain.some((t) => (t.kind === 'difficult' || (t.kind === 'water' && t.depth !== 'deep')) && cellsOf(t, map.width, map.height).some(([x, y]) => x === at[0] && y === at[1]));
 }
 
-/** The map as players may see it: no hidden tokens, no DM notes, no background file name. */
+/**
+ * The map as players may see it, like the wiki's playerMap(): no hidden tokens, DM notes, rooms
+ * or background file name, and secret doors are plain walls (their labels too).
+ */
 export function playersMap(map: BattleMap, hiddenTokens: ReadonlySet<string>): BattleMap {
   return {
     v: 1,
@@ -182,10 +201,27 @@ export function playersMap(map: BattleMap, hiddenTokens: ReadonlySet<string>): B
     height: map.height,
     ...(map.ground ? { ground: map.ground } : {}),
     ...(map.art ? { art: map.art } : {}),
-    terrain: map.terrain,
+    terrain: map.terrain.map((t) => {
+      if (!t.secret) return t;
+      const { secret: _secret, label: _label, ...wall } = t;
+      return wall;
+    }),
     tokens: map.tokens.filter((t) => !t.hidden && !hiddenTokens.has(t.id)),
     notes: [],
   };
+}
+
+/** The party found a secret door: it becomes a closed door from then on. */
+export function findSecretDoor(map: BattleMap, index: number): BattleMap {
+  const wall = map.terrain[index];
+  if (!wall || wall.kind !== 'wall' || wall.secret !== 'door') throw new MapError('That isn’t a secret door');
+  const { secret: _secret, ...rest } = wall;
+  return { ...map, terrain: map.terrain.map((t, i) => (i === index ? { ...rest, kind: 'door', state: 'closed' } : t)) };
+}
+
+/** The secret doors covering a square, by index in `terrain`. */
+export function secretDoorsAt(map: BattleMap, at: Cell): number[] {
+  return map.terrain.flatMap((t, i) => (t.kind === 'wall' && t.secret === 'door' && cellsOf(t, map.width, map.height).some(([x, y]) => x === at[0] && y === at[1]) ? [i] : []));
 }
 
 /** The token covering a square (the last drawn wins), if any. */
