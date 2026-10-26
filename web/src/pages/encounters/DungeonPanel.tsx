@@ -90,9 +90,18 @@ function RoomCard({ room, run, state, act }: { room: Room; run: DungeonRun; stat
             {room.encounter.difficulty ? <span className="muted"> · {room.encounter.difficulty}</span> : null}
           </p>
           {room.encounter.creatures.length > 0 && room.encounter.text && <p className="muted small pre-line">{room.encounter.text}</p>}
-          <button className="primary" disabled={!canFight} onClick={() => void act({ type: 'fight', room: room.key })} title={fighting ? 'Finish the fight going on first' : elsewhere ? `On level ${room.level ?? 1}: take the stairs first` : undefined}>
-            {room.spawned ? 'Fight again here' : 'Fight here'}
-          </button>
+          <div className="row">
+            {/* A prepared battle (#109): the room's own map, tokens and tactics from the wiki. */}
+            {room.encounter.encounter_id && !room.spawned && (
+              <button className="primary" disabled={!canFight} onClick={() => void act({ type: 'fight', room: room.key, prepared: true })} title="The room’s prepared battle from the wiki: its own map, with everyone where it puts them. Back to the floor plan after.">
+                Fight on its battle map
+              </button>
+            )}
+            <button className={room.encounter.encounter_id && !room.spawned ? '' : 'primary'} disabled={!canFight} onClick={() => void act({ type: 'fight', room: room.key })} title={fighting ? 'Finish the fight going on first' : elsewhere ? `On level ${room.level ?? 1}: take the stairs first` : undefined}>
+              {room.spawned ? 'Fight again here' : room.encounter.encounter_id ? 'Fight on the floor plan' : 'Fight here'}
+            </button>
+          </div>
+          {run.fight?.battle && run.fight.room === room.key && <p className="muted small">On {run.fight.battle}’s map: End fight goes back to the floor plan.</p>}
           {room.spawned && !monstersHere && <span className="muted small"> Nothing left standing here.</span>}
         </div>
       )}
