@@ -714,3 +714,61 @@ export interface JoinLink {
   local: string | null;
   publicUrlSet: boolean;
 }
+
+// --- Polls (#43) ---------------------------------------------------------------------------------
+
+/** When a poll posts: once at a local date and time, or every week (in transcript.timezone). */
+export type PollSchedule = { kind: 'once'; at: string /* "2026-10-27T10:00" */ } | { kind: 'weekly'; weekday: number /* 0 = Sunday */; time: string /* "10:00" */ };
+
+/** Typed answers, or the coming days ("Fri 24 Oct"), optionally only some weekdays. */
+export type PollAnswers = { kind: 'fixed'; list: string[] } | { kind: 'days'; count: number; startInDays: number; weekdays?: number[] };
+
+/** A poll set up in the app (data/polls.json). */
+export interface Poll {
+  id: string;
+  question: string;
+  channelId: string;
+  answers: PollAnswers;
+  schedule: PollSchedule;
+  /** How long it's open: 1 hour to 32 days. */
+  hours: number;
+  multiSelect: boolean;
+  /** When it closes, post the winner, mentioning this role if set. */
+  announce: { on: boolean; roleId?: string };
+  enabled: boolean;
+  createdAt: number;
+  /** The scheduled time last posted for, so a time is never posted twice. */
+  lastSlot?: number;
+  /** The latest posts, newest last. */
+  posts: PollPost[];
+}
+
+export interface PollPost {
+  messageId: string;
+  channelId: string;
+  channelName?: string;
+  postedAt: number;
+  closesAt: number;
+  answers: string[];
+  /** Posted more than a few minutes after its time (the app was off). */
+  late?: boolean;
+  /** "Post now" rather than the schedule. */
+  manual?: boolean;
+  results?: PollResults;
+  announced?: boolean;
+}
+
+export interface PollResults {
+  answers: Array<{ text: string; votes: number; voters: string[] }>;
+  /** Whether Discord has closed the poll (results are final). */
+  final: boolean;
+  checkedAt: number;
+}
+
+/** GET /api/polls */
+export interface PollsState {
+  polls: Array<Poll & { next: number | null }>;
+  timeZone: string;
+  channels: Array<{ id: string; name: string; guild: string }>;
+  roles: Array<{ id: string; name: string; guild: string }>;
+}

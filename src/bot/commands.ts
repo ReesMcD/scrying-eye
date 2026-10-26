@@ -5,7 +5,8 @@ import { TABLE_COMMANDS } from './tableCommands.js';
 
 /**
  * What the bot needs in a server: View Channels, Send Messages and Attach Files (notices and
- * transcripts), Embed Links (the encounter join post), Connect (to record) and Speak (to play music).
+ * transcripts), Embed Links (the encounter join post), Connect (to record), Speak (to play music)
+ * and Send Polls (scheduled polls).
  */
 export const BOT_PERMISSIONS =
   PermissionFlagsBits.ViewChannel |
@@ -13,7 +14,8 @@ export const BOT_PERMISSIONS =
   PermissionFlagsBits.AttachFiles |
   PermissionFlagsBits.EmbedLinks |
   PermissionFlagsBits.Connect |
-  PermissionFlagsBits.Speak;
+  PermissionFlagsBits.Speak |
+  PermissionFlagsBits.SendPolls;
 
 const PERMISSION_NAMES: Array<[bigint, string]> = [
   [PermissionFlagsBits.ViewChannel, 'View Channels'],
@@ -22,6 +24,7 @@ const PERMISSION_NAMES: Array<[bigint, string]> = [
   [PermissionFlagsBits.EmbedLinks, 'Embed Links'],
   [PermissionFlagsBits.Connect, 'Connect'],
   [PermissionFlagsBits.Speak, 'Speak'],
+  [PermissionFlagsBits.SendPolls, 'Send Polls'],
 ];
 
 /** Which of the permissions the bot needs it lacks, by name (#63). Administrator has them all. */

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction, type Guild, type VoiceBasedChannel } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits, PollLayoutType, type AutocompleteInteraction, type ChatInputCommandInteraction, type Guild, type NewsChannel, type TextChannel, type VoiceBasedChannel, type VoiceChannel } from 'discord.js';
 import { campaignForChannel } from '../config/roster.js';
 import { COMMANDS, inviteUrl, missingPermissions, runCommand, type CommandName } from './commands.js';
 import { isLookupCommand, isTableCommand, lookupCard, lookupChoices, rollReply } from './tableCommands.js';
@@ -13,7 +13,8 @@ import { MusicBroadcast } from '../music/broadcast.js';
 import type { ConfigStore } from '../app/configStore.js';
 import type { JobRunner } from '../app/jobs.js';
 import type { BotControl, BotStatus, GuildInfo, LiveSnapshot, LiveUpdate, RecordingStatus } from './types.js';
-import type { LiveTranscript, TranscriptLine } from '../shared/types.js';
+import type { LiveTranscript, PollsState, TranscriptLine } from '../shared/types.js';
+import type { PollPoster } from '../polls/PollService.js';
 import { LiveTranscriber } from '../transcription/live.js';
 import { createTranscriber } from '../transcription/factory.js';
 
@@ -276,6 +277,65 @@ export class BotService extends EventEmitter implements BotControl {
     const components = post.url ? [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Join').setURL(post.url))] : [];
     await channel.send({ embeds: [embed], components });
     return { channelName: 'name' in channel && channel.name ? channel.name : 'the channel' };
+  }
+
+  /** Posts and reads scheduled polls (#43); null while the bot isn't connected. */
+  pollPoster(): PollPoster | null {
+    if (!this.client || this.state !== 'ready') return null;
+    const sendable = async (channelId: string) => {
+      const channel = await this.client?.channels.fetch(channelId).catch(() => null);
+      if (!channel?.isSendable()) throw new Error('I can’t post in that channel: check it still exists and I can send messages there');
+      return channel;
+    };
+    return {
+      post: async (channelId, p) => {
+        const channel = await sendable(channelId);
+        const message = await channel.send({
+          ...(p.note ? { content: p.note } : {}),
+          poll: { question: { text: p.question }, answers: p.answers.map((text) => ({ text })), duration: p.hours, allowMultiselect: p.multiSelect, layoutType: PollLayoutType.Default },
+          allowedMentions: { parse: [] },
+        });
+        return { messageId: message.id, channelName: 'name' in channel && channel.name ? channel.name : 'the channel' };
+      },
+      results: async (channelId, messageId) => {
+        const channel = await sendable(channelId);
+        if (!('messages' in channel)) return null;
+        const message = await channel.messages.fetch(messageId).catch(() => null);
+        if (!message?.poll) return null;
+        const answers = await Promise.all(
+          [...message.poll.answers.values()].map(async (a) => ({
+            text: a.text ?? '',
+            votes: a.voteCount,
+            voters: a.voteCount ? [...(await a.voters.fetch()).values()].map((u) => message.guild?.members.cache.get(u.id)?.displayName ?? u.displayName) : [],
+          })),
+        );
+        return { answers, final: message.poll.resultsFinalized, checkedAt: Date.now() };
+      },
+      say: async (channelId, text, roleId) => {
+        const channel = await sendable(channelId);
+        await channel.send({ content: roleId ? `<@&${roleId}> ${text}` : text, allowedMentions: { roles: roleId ? [roleId] : [] } });
+      },
+    };
+  }
+
+  /** Where polls can go, and the roles a winner can mention, in every server the bot is in. */
+  pollTargets(): Pick<PollsState, 'channels' | 'roles'> {
+    if (!this.client || this.state !== 'ready') return { channels: [], roles: [] };
+    const guilds = [...this.client.guilds.cache.values()];
+    return {
+      channels: guilds.flatMap((g) =>
+        [...g.channels.cache.values()]
+          .filter((c): c is TextChannel | NewsChannel | VoiceChannel => (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement || c.type === ChannelType.GuildVoice) && c.viewable)
+          .sort((a, b) => a.rawPosition - b.rawPosition)
+          .map((c) => ({ id: c.id, name: c.name, guild: g.name })),
+      ),
+      roles: guilds.flatMap((g) =>
+        [...g.roles.cache.values()]
+          .filter((r) => r.id !== g.id && !r.managed)
+          .sort((a, b) => b.position - a.position)
+          .map((r) => ({ id: r.id, name: r.name, guild: g.name })),
+      ),
+    };
   }
 
   /** The app's "Post to Discord": into the voice channel being recorded (its chat), else where /encounter was last used. */
