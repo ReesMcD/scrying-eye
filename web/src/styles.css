@@ -389,3 +389,5 @@ details > summary { cursor: pointer; }
 .roll.crit-success { border-color: var(--good); }
 .roll.crit-success .roll-total { color: var(--good); }
 .roll.crit-fail .roll-total { color: var(--bad); }
+.dice-extra { margin-top: 10px; gap: 20px; }
+.dice-extra .toggle { margin-bottom: 0; }

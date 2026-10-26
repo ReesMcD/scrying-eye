@@ -26,8 +26,8 @@ function problem(expression: string): string | null {
 
 /**
  * Dice for the table (#58): quick buttons, or any notation (1d20+5, 2d6+3, 4d6kh3), with an
- * optional label. The server rolls, so nobody's phone decides the result. `extra` sits beside
- * the Roll button (the DM's "secret" switch).
+ * optional label. The server rolls, so nobody's phone decides the result. `extra` goes under
+ * the Roll button (the DM's switches).
  */
 export function DicePanel({ rolls, onRoll, extra, title = 'Dice' }: { rolls: EncounterRoll[]; onRoll: (expression: string, label: string) => Promise<void>; extra?: ReactNode; title?: string }) {
   const [expression, setExpression] = useState('');
@@ -63,12 +63,12 @@ export function DicePanel({ rolls, onRoll, extra, title = 'Dice' }: { rolls: Enc
       >
         <input aria-label="Dice" value={expression} placeholder="1d20+5, 2d6+3, 4d6kh3" autoCapitalize="off" autoCorrect="off" spellCheck={false} onChange={(e) => setExpression(e.target.value)} />
         <input aria-label="What for" value={label} placeholder="What for (optional)" maxLength={60} onChange={(e) => setLabel(e.target.value)} />
-        {extra}
         <button type="submit" className="primary" disabled={busy || !expression.trim() || !!typedProblem}>
           Roll
         </button>
       </form>
       {typedProblem && <div className="field-error">{typedProblem}</div>}
+      {extra && <div className="row dice-extra">{extra}</div>}
       <RollList rolls={rolls} />
     </section>
   );

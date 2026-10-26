@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { Combatant, CombatantKind, EncounterAction, EncounterState, TurnSuggestion } from '../../types';
 import { api } from '../../api';
 import { DicePanel } from '../../dice/DicePanel';
-import { Badge } from '../../ui';
+import { Badge, Toggle } from '../../ui';
 import { CombatantPanel } from './CombatantPanel';
 import { JoinPanel } from './JoinPanel';
 import { MapCard } from './MapCard';
@@ -281,12 +281,8 @@ function DmDice({ state, act }: { state: EncounterState; act: Act }) {
       onRoll={(expression, label) => act({ type: 'roll', expression, ...(label ? { label } : {}), ...(secret ? { secret: true } : {}) })}
       extra={
         <>
-          <label className="row small" title="Only you see it">
-            <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} /> Secret
-          </label>
-          <label className="row small" title="Players' and your public rolls go to the Discord channel too">
-            <input type="checkbox" checked={!!state.postRolls} onChange={(e) => void act({ type: 'postRolls', on: e.target.checked })} /> Post to Discord
-          </label>
+          <Toggle checked={secret} onChange={setSecret} label="Secret" hint="Only you see it" />
+          <Toggle checked={!!state.postRolls} onChange={(on) => void act({ type: 'postRolls', on })} label="Post to Discord" hint="Public rolls go to the channel too" />
         </>
       }
     />
