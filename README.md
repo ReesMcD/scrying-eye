@@ -490,7 +490,7 @@ What's in it:
       (the optional rule; use it or don't).
   - **3D:** the **2D / 3D** switch on the map (tracker and players' phones) shows the same map in
     3D: walls and doors with height, raised ground, cover, trees and pillars, water, and the
-    tokens as figures with their names and HP. Drag to turn the camera, pinch or scroll to zoom,
+    tokens as paper standees (painted cards in stands coloured by side, like paper minis) with their names and HP. The cards turn to face you and lie flat when you look straight down, so the top view reads like the 2D map. Drag to turn the camera, pinch or scroll to zoom,
     two fingers or the right button to pan. You can drag tokens in 3D too, and the buttons look
     at whose turn it is, at your own character, straight down, or at the whole map. 2D stays the
     default, each device remembers its choice, spell areas are placed on the 2D map, and a

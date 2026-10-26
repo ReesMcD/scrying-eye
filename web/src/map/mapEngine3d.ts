@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { onBoard, SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
 import { moveGuide } from './moveGuide';
+import { leanFor, paintedFigure } from './standee';
 import { buildScene, cellAt, figureOf, sceneKey, type BoxPart, type MapScene } from '../../../src/shared/mapScene';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
@@ -39,6 +40,8 @@ type Drag = { pointer: number; token: MapToken; from: Cell; to: Cell; startX: nu
 interface FigureMeshes {
   group: THREE.Group;
   body: THREE.Mesh[];
+  /** The paper standee, turned to face the camera each frame (#97). */
+  card: THREE.Mesh;
   turnRing: THREE.Mesh;
   pickRing: THREE.Mesh;
   tag: THREE.Sprite;
@@ -541,7 +544,7 @@ export class MapEngine3d {
     for (const t of map.tokens) {
       seen.add(t.id);
       const ti = info[t.id];
-      const shape = `${t.size}|${t.kind}|${!!ti?.hidden}`;
+      const shape = `${t.size}|${t.kind}|${!!ti?.hidden}|${t.name}`;
       let fig = this.figures.get(t.id);
       if (fig && fig.shape !== shape) {
         this.world.remove(fig.group);
@@ -573,21 +576,32 @@ export class MapEngine3d {
     }
   }
 
+  /** A creature as a paper standee in a round stand coloured by side (#97). */
   private makeFigure(t: MapToken, ti: TokenInfo | undefined, shape: string): FigureMeshes {
     const f = figureOf(this.model!, t, t.at);
     const colour = new THREE.Color(t.kind === 'pc' ? this.colors.accent : t.kind === 'npc' ? this.colors.warn : this.colors.bad);
     const faded = !!ti?.hidden;
-    const skin = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, transparent: faded, opacity: faded ? 0.4 : 1 });
-    const dark = new THREE.MeshStandardMaterial({ color: colour.clone().multiplyScalar(0.45), roughness: 0.7, transparent: faded, opacity: faded ? 0.4 : 1 });
     const group = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(f.radius, f.radius * 1.05, 0.08, 32), dark);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(f.radius, f.radius * 1.05, 0.08, 32), new THREE.MeshStandardMaterial({ color: colour, roughness: 0.45, transparent: faded, opacity: faded ? 0.4 : 1 }));
     base.position.y = 0.04;
-    const torso = f.height * 0.5;
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(f.radius * 0.5, torso, 4, 14), skin);
-    body.position.y = 0.08 + f.radius * 0.5 + torso / 2;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(f.radius * 0.42, 18, 14), skin);
-    head.position.y = 0.08 + f.radius + torso + f.radius * 0.3;
-    for (const m of [base, body, head]) {
+    const clip = new THREE.Mesh(new THREE.BoxGeometry(f.radius * 0.9, 0.08, 0.06), new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.5 }));
+    clip.position.y = 0.11;
+    // The card: a painted figure cut out of paper, its foot in the clip.
+    const art = paintedFigure(t);
+    const texture = new THREE.CanvasTexture(art);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    const height = f.height * 1.25;
+    const width = (height * art.width) / art.height;
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height).translate(0, height / 2, 0),
+      new THREE.MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.9, side: THREE.DoubleSide, transparent: faded, opacity: faded ? 0.45 : 1 }),
+    );
+    card.rotation.order = 'YXZ';
+    card.position.y = 0.08;
+    // Its shadow is the shape of the cut, not the whole card.
+    card.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: texture, alphaTest: 0.5 });
+    for (const m of [base, clip, card]) {
       m.castShadow = true;
       m.receiveShadow = true;
       m.userData.tokenId = t.id;
@@ -603,11 +617,26 @@ export class MapEngine3d {
     // The same size on screen however far the camera is, so names stay readable zoomed out.
     const tag = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true, sizeAttenuation: false }));
     tag.renderOrder = 10;
-    // Anchored by its bottom edge, just over the head.
+    // Anchored by its bottom edge, just over the card.
     tag.center.set(0.5, 0);
-    tag.position.y = head.position.y + f.radius * 0.42 + 0.15;
-    group.add(base, body, head, turnRing, pickRing, tag);
-    return { group, body: [base, body, head], turnRing, pickRing, tag, tagKey: '', shape };
+    tag.position.y = height + 0.2;
+    group.add(base, clip, card, turnRing, pickRing, tag);
+    return { group, body: [base, clip, card], card, turnRing, pickRing, tag, tagKey: '', shape };
+  }
+
+  /**
+   * Pop-up standees: every card turns the way the camera looks, and leans back as it looks down,
+   * so from above they lie flat and read like the 2D map.
+   */
+  private faceCamera(): void {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const down = Math.asin(Math.min(1, Math.max(-1, offset.y / (offset.length() || 1))));
+    const facing = Math.atan2(offset.x, offset.z);
+    const lean = leanFor(down);
+    for (const fig of this.figures.values()) {
+      fig.card.rotation.y = facing;
+      fig.card.rotation.x = -lean;
+    }
   }
 
   /** The name and HP bar floating over a figure. */
@@ -771,6 +800,7 @@ export class MapEngine3d {
     cancelAnimationFrame(this.frame);
     this.frame = requestAnimationFrame(() => {
       this.showTags();
+      this.faceCamera();
       this.renderer.render(this.scene, this.camera);
     });
   }
