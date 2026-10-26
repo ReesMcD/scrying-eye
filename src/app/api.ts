@@ -106,7 +106,7 @@ export function createApi(opts: ApiOptions): Hono {
         {
           ...(pick(body.title) !== undefined ? { title: pick(body.title) } : {}),
           ...(pick(body.campaign) !== undefined ? { campaign: pick(body.campaign) } : {}),
-          ...(body.tracks !== undefined ? { tracks: readTracks(body.tracks, config) } : {}),
+          ...(body.tracks !== undefined ? { tracks: body.tracks === null ? [] : readTracks(body.tracks, config) } : {}),
         },
         config,
       );

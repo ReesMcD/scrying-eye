@@ -379,7 +379,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       throw new EncounterError('Unknown action');
   }
   // Fog that follows the party: reveal what their tokens can see after anything that changes it.
-  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal'].includes(action.type)) revealPartySight(s);
+  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal'].includes(action.type)) revealPartySight(s, action.type === 'move' ? action.token : undefined);
   return s;
 }
 
@@ -400,13 +400,20 @@ function setRevealed(fog: NonNullable<EncounterState['fog']>, cells: readonly Ce
 }
 
 /** Adds what the party's tokens can see to the revealed squares. */
-function revealPartySight(s: EncounterState): void {
+/**
+ * Reveals what the party's tokens see. Revealing only adds, so after a move only the token that
+ * moved needs looking from, and squares already revealed aren't checked again: this runs on the
+ * same thread as voice recording, and a full pass on a big map takes a tenth of a second.
+ */
+function revealPartySight(s: EncounterState, moved?: string): void {
   const map = s.map!;
   const pcTokens = new Set(s.combatants.filter((c) => c.kind === 'pc' && c.tokenId).map((c) => c.tokenId!));
-  const eyes = map.tokens.filter((t) => pcTokens.has(t.id) || (t.kind === 'pc' && !s.combatants.some((c) => c.tokenId === t.id))).flatMap((t) => footprint(t.at, t.size));
+  const party = map.tokens.filter((t) => pcTokens.has(t.id) || (t.kind === 'pc' && !s.combatants.some((c) => c.tokenId === t.id)));
+  const eyes = party.filter((t) => !moved || t.id === moved).flatMap((t) => footprint(t.at, t.size));
   if (!eyes.length) return;
-  const seen = visibleFrom(map, eyes);
-  s.fog!.revealed = [...new Set([...s.fog!.revealed, ...seen])];
+  const revealed = new Set(s.fog!.revealed);
+  for (const cell of visibleFrom(map, eyes, Infinity, undefined, revealed)) revealed.add(cell);
+  s.fog!.revealed = [...revealed];
 }
 
 /** Applies a map change, as an EncounterError when the map refuses it. */

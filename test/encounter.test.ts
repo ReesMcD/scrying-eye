@@ -381,3 +381,9 @@ test("D&D Beyond numbers from the wiki's party sync: initiative and Dexterity; H
   assert.match(outcome.text, /HP at the end: Aria 18\/28\./);
   assert.doesNotMatch(outcomeOf(prepared, 1).text, /HP at the end/, 'nobody hurt: nothing to copy');
 });
+
+test('ending a wiki fight after the wiki settings were removed is a note in the log, never a crash', async () => {
+  const wiki = new WikiEncounters(mkdtempSync(join(tmpdir(), 'enc-')), () => configSchema.parse({}), () => TOKEN, async () => Response.json({}));
+  const outcome = outcomeOf(encounterFromWiki(WIKI, 'e1', 0), 1);
+  assert.match(await wiki.sendResult(outcome), /^Not sent to the wiki: Set Settings → Upload/);
+});

@@ -198,3 +198,38 @@ test('a paused poll switched back on waits for its next time instead of posting 
   await service.tick();
   assert.equal(discord.posts.length, 1);
 });
+
+test('a one-off poll that already posted stays done when paused and switched back on', async () => {
+  let now = at('2026-10-20T09:00Z');
+  const discord = fakeDiscord();
+  const service = new PollService(join(mkdtempSync(join(tmpdir(), 'polls-')), 'polls.json'), { poster: () => discord.poster, timeZone: () => LONDON, now: () => now, log: () => {} });
+  const input = { ...INPUT, schedule: { kind: 'once', at: '2026-10-20T10:00' } };
+  const poll = service.create(readPollInput(input));
+  await service.tick();
+  assert.equal(discord.posts.length, 1);
+  service.update(poll.id, readPollInput({ ...input, enabled: false }));
+  now += 3_600_000;
+  service.update(poll.id, readPollInput({ ...input, enabled: true }));
+  await service.tick();
+  assert.equal(discord.posts.length, 1, 'not posted again');
+});
+
+test('votes that can’t be read yet (an outage, a permission) are retried, not taken as "nobody voted"', async () => {
+  let now = at('2026-10-19T09:00Z');
+  const discord = fakeDiscord();
+  let outage = true;
+  const poster: PollPoster = { ...discord.poster, results: async (c, m) => (outage ? Promise.reject(new Error('503')) : discord.poster.results(c, m)) };
+  const service = new PollService(join(mkdtempSync(join(tmpdir(), 'polls-')), 'polls.json'), { poster: () => poster, timeZone: () => LONDON, now: () => now, log: () => {} });
+  const poll = service.create(readPollInput({ ...INPUT, hours: 1 }));
+  poll.createdAt = at('2026-10-18T00:00Z');
+  await service.tick();
+  now += 2 * 3_600_000;
+  await service.tick();
+  assert.deepEqual(discord.said, []);
+  assert.equal(service.list()[0]!.posts[0]!.results!.final, false);
+  outage = false;
+  discord.votes.set('m1', { answers: [{ text: 'Fri 23 Oct', votes: 2, voters: ['A', 'B'] }], final: true, checkedAt: now });
+  now += 6 * 60_000;
+  await service.tick();
+  assert.match(discord.said[0]!, /\*\*Fri 23 Oct\*\* \(2 votes\)/);
+});

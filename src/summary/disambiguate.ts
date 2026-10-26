@@ -77,22 +77,23 @@ export async function disambiguateLines(
 ): Promise<DisambiguationResult> {
   const log = opts.log ?? console.log;
   const campaign = campaignFor(config, session);
-  const epochs = trackEpochs(session.tracks);
-  const epochOf = (offsetMs: number) => epochs.findLast((at) => at <= offsetMs) ?? 0;
-  const trackOf = (l: TranscriptLine) => `${l.userId}@${epochOf(l.offsetMs)}`;
+  // Each account's stretches: split only where the session says who's on *that* account changed.
+  const epochs = new Map([...new Set(lines.map((l) => l.userId))].map((account) => [account, trackEpochs(session.tracks, account)]));
+  const trackOf = (l: TranscriptLine) => `${l.userId}@${epochs.get(l.userId)!.findLast((at) => at <= l.offsetMs) ?? 0}`;
   const present = new Set(lines.map(trackOf));
   const tracks = new Map<string, Track>();
   const byNumber = new Map<number, NumberedIdentity>();
   let n = 0;
-  epochs.forEach((fromMs, e) => {
-    for (const [userId, identities] of sharedAccounts(rosterAt(config, session.tracks, fromMs), campaign)) {
+  for (const [userId, starts] of epochs) {
+    starts.forEach((fromMs, e) => {
+      const identities = sharedAccounts(rosterAt(config, session.tracks, fromMs), campaign).get(userId);
       const track = `${userId}@${fromMs}`;
-      if (!present.has(track)) continue;
+      if (!identities || !present.has(track)) return;
       const numbered = identities.map((i) => ({ ...i, number: ++n, track }));
-      tracks.set(track, { userId, fromMs, toMs: epochs[e + 1] ?? null, identities: numbered });
+      tracks.set(track, { userId, fromMs, toMs: starts[e + 1] ?? null, identities: numbered });
       for (const i of numbered) byNumber.set(i.number, i);
-    }
-  });
+    });
+  }
   const isTarget = (l: TranscriptLine) => tracks.has(trackOf(l));
 
   const template = loadTemplate('disambiguate', config.summary.prompts_dir);

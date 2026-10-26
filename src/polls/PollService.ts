@@ -4,7 +4,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { DamagedFileError } from '../util/files.js';
 import { readJson, writeJson } from '../session/layout.js';
 import type { Poll, PollAnswers, PollPost, PollResults, PollSchedule } from '../shared/types.js';
-import { answersFor, dueSlot, MAX_ANSWERS, parseLocal } from './schedule.js';
+import { answersFor, dueSlot, latestSlot, MAX_ANSWERS, parseLocal } from './schedule.js';
 
 /** What a poll needs from Discord (the bot), so the scheduler can be tested without it. */
 export interface PollPoster {
@@ -144,12 +144,17 @@ export class PollService extends EventEmitter {
   /** Changes a poll. Changing when it posts, or turning it back on, starts its schedule afresh. */
   update(id: string, input: PollInput): Poll {
     const poll = this.find(id);
-    // A new schedule, or switching a paused poll back on, starts afresh: nothing missed meanwhile is owed.
-    const rescheduled = JSON.stringify(poll.schedule) !== JSON.stringify(input.schedule) || (!poll.enabled && input.enabled);
+    const rescheduled = JSON.stringify(poll.schedule) !== JSON.stringify(input.schedule);
+    const resumed = !poll.enabled && input.enabled;
     Object.assign(poll, input);
     if (rescheduled) {
+      // A new time: the schedule starts afresh (a one-off set in the past posts at once).
       poll.createdAt = this.now();
       delete poll.lastSlot;
+    } else if (resumed) {
+      // Back on: nothing missed while paused is owed, and a one-off that already posted stays done.
+      const missed = latestSlot(poll.schedule, this.now(), this.deps.timeZone());
+      if (missed !== null) poll.lastSlot = Math.max(poll.lastSlot ?? missed, missed);
     }
     this.save();
     return poll;

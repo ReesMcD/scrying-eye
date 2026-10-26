@@ -101,20 +101,35 @@ type Listener = {
 const listeners = new Set<Listener>();
 let stopStream: (() => void) | undefined;
 
+/** How long in the background before the live stream is assumed to have gone stale. */
+const AWAY_MS = 15_000;
+
 /** One shared server-sent-events stream (fetch-based so the password header can be sent). */
 function startStream(): () => void {
   let stopped = false;
   let controller: AbortController | undefined;
   let connectedBefore = false;
   let wake: (() => void) | undefined;
-  // Back from the background: a connection that slept with the phone can hang without failing, so
-  // start a fresh one now instead of waiting to notice.
+  let reconnectNow = false;
+  let hiddenAt: number | null = null;
+  // Back from a while in the background (a locked phone): a connection that slept can hang without
+  // failing, so start a fresh one at once instead of waiting to notice. A quick tab switch keeps it.
   const visible = () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    if (away < AWAY_MS) return;
+    reconnectNow = true;
     controller?.abort();
     wake?.();
   };
-  const online = () => wake?.();
+  const online = () => {
+    reconnectNow = true;
+    wake?.();
+  };
   document.addEventListener('visibilitychange', visible);
   window.addEventListener('online', online);
   const run = async () => {
@@ -153,7 +168,7 @@ function startStream(): () => void {
       } catch {
         /* reconnect below */
       }
-      if (!stopped)
+      if (!stopped && !reconnectNow)
         await new Promise<void>((r) => {
           const t = setTimeout(r, 3000);
           wake = () => {
@@ -161,6 +176,8 @@ function startStream(): () => void {
             r();
           };
         });
+      wake = undefined;
+      reconnectNow = false;
     }
   };
   void run();

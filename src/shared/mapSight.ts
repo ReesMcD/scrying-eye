@@ -39,11 +39,15 @@ export function canSee(blockers: ReadonlySet<string>, from: Cell, to: Cell): boo
   return true;
 }
 
-/** Every square seen from any of `eyes` (a token's squares), out to `rangeSquares` if given. */
-export function visibleFrom(map: BattleMap, eyes: readonly Cell[], rangeSquares = Infinity, blockers = sightBlockers(map)): Set<string> {
+/**
+ * Every square seen from any of `eyes` (a token's squares), out to `rangeSquares` if given.
+ * Squares in `skip` (already revealed) aren't checked again.
+ */
+export function visibleFrom(map: BattleMap, eyes: readonly Cell[], rangeSquares = Infinity, blockers = sightBlockers(map), skip: ReadonlySet<string> = new Set()): Set<string> {
   const seen = new Set<string>();
   for (let y = 0; y < map.height; y++)
     for (let x = 0; x < map.width; x++) {
+      if (skip.has(key(x, y))) continue;
       if (eyes.some((e) => Math.max(Math.abs(e[0] - x), Math.abs(e[1] - y)) <= rangeSquares && canSee(blockers, e, [x, y]))) seen.add(key(x, y));
     }
   return seen;

@@ -49,6 +49,8 @@ export function readRolls(sessionDir: string): RollNote[] {
       try {
         return line.trim() ? [JSON.parse(line) as RollNote] : [];
       } catch {
+        // Most likely the last line, cut off by a crash mid-write: the other rolls still count.
+        console.warn(`Skipping a damaged line in ${file}`);
         return [];
       }
     });
@@ -116,8 +118,9 @@ export function readSessionInfo(sessionDir: string): SessionInfo {
   try {
     info = readJson<SessionInfo>(paths.session(sessionDir));
   } catch (err) {
+    if (!(err instanceof DamagedFileError)) throw err;
     // A session.json cut off by a crash: say so, and rebuild what we can from the audio.
-    console.warn(`${(err as Error).message}; using the audio's times instead`);
+    console.warn(`${err.message}; using the audio's times instead`);
   }
   if (info) return info;
   // Older/crashed sessions: derive from the audio.
@@ -130,7 +133,8 @@ export function readParticipants(sessionDir: string): Record<string, Participant
   try {
     return readJson<Record<string, Participant>>(paths.participants(sessionDir)) ?? {};
   } catch (err) {
-    console.warn(`${(err as Error).message}; showing Discord IDs instead of names`);
+    if (!(err instanceof DamagedFileError)) throw err;
+    console.warn(`${err.message}; showing Discord IDs instead of names`);
     return {};
   }
 }
