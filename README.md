@@ -478,6 +478,10 @@ What's in it:
     at whose turn it is, at your own character, straight down, or at the whole map. 2D stays the
     default, each device remembers its choice, spell areas are placed on the 2D map, and a
     browser without WebGL keeps the 2D map. It loads only when someone switches to it.
+  - **Screen view** (Players' link → **Screen view**): the map in 3D filling a browser window,
+    following whoever's turn it is, with the turn order and the latest rolls on top. It shows what
+    the players see (their fog, no hidden creatures) and controls nothing. Share that window on
+    Discord, while each player moves their own token on their phone or laptop (2D, or 3D).
   - **Exploring:** the DM sees each room's key and name. Secret doors are walls (dashed for the DM)
     until the party finds one; tap it under **Doors** to make it a door. **Fog** hides the map from
     players until it's revealed, by square or by room, or automatically as the party's tokens see

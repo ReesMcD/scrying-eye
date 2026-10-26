@@ -151,6 +151,7 @@ the Record page shows **Re-add the bot** until it's done.
 - [ ] Settings → Polls: a **Once** poll a few minutes ahead, open 1 hour, winner on. It posts on time; vote; after it closes, **See votes** shows them and the winner is posted.
 - [ ] Encounters: start one, roll from the tracker (and once with **Secret**), and from a phone on the players' link. The phone never shows the secret roll.
 - [ ] Optional: Settings → Encounters → **Suggest monsters' moves** on, then **Suggest a move** on a monster's turn.
+- [ ] Players' link → **Screen view**: opens the map in 3D full-window; share it on Discord. It follows each turn, shows the order and rolls, and hides what the players can't see.
 - [ ] Once the wiki serves dungeons (ReesMcD/dnd-wiki#106): Encounters → Dungeons → **Run**. Enter a room, give a puzzle hint, **Fight here**, **End fight**, in 2D and 3D, and on a phone (fog, no room content).
 - [ ] A session's **Who's on each mic**: add a switch, save, and the transcript's names change from that time.
 

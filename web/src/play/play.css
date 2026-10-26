@@ -20,3 +20,24 @@
 .play-row-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .play .hp-bar { display: block; }
 .play-row-main > .badge { align-self: flex-start; }
+
+/* The screen view (?screen): the map fills the window, shared on Discord. */
+.screen { position: fixed; inset: 0; background: var(--bg); }
+.screen > .battle-map { height: 100%; border: 0; border-radius: 0; }
+.screen-empty { display: grid; place-items: center; height: 100%; font-size: 1.4rem; }
+.screen-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
+.screen-top > * { padding: 6px 14px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.screen-top > svg { box-sizing: content-box; padding: 6px; }
+.screen-title { font-weight: 800; font-size: 1.15rem; }
+.screen-status { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; }
+.screen-status:empty { display: none; }
+.screen-turn { margin-left: auto; background: var(--accent); color: var(--accent-text); font-weight: 800; }
+.screen-order { position: absolute; left: 12px; top: 56px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 200px; pointer-events: none; }
+.screen-chip { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border); font-weight: 600; }
+.screen-chip.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.screen-chip.down { opacity: 0.5; }
+.screen-chip .hp-bar { display: block; }
+.screen-rolls { position: absolute; left: 12px; bottom: 12px; width: min(340px, calc(100% - 80px)); pointer-events: none; }
+.screen-rolls .roll { background: color-mix(in srgb, var(--surface) 88%, transparent); }
+.screen .map-view-switch { display: none; }
+@media (max-width: 640px) { .screen-order { display: none; } }
