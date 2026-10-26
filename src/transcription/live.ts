@@ -2,12 +2,11 @@ import { EventEmitter } from 'node:events';
 import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { campaignFor, charactersByAccount, sharedAccounts, speakerNames } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
 import type { UtteranceRecord } from '../recording/UtteranceRecorder.js';
 import { paths, readParticipants, readSessionInfo } from '../session/layout.js';
 import type { LiveTranscript, TranscriptLine } from '../shared/types.js';
-import { mergeSegments } from '../transcript/merge.js';
+import { keepSharedApart, mergeSegments, sessionNamer } from '../transcript/merge.js';
 import { encodeFlac, planBatches, renderBatchPcm, type BatchPlan, type Clip } from './batching.js';
 import { dropReason } from './filter.js';
 import { remapToUtterances, type SpeakerSegment } from './remap.js';
@@ -121,15 +120,12 @@ export class LiveTranscriber extends EventEmitter {
     if (!bySpeaker.size) return [];
     const { sessionDir, config } = this.opts;
     const session = readSessionInfo(sessionDir);
-    const campaign = campaignFor(config, session);
     return mergeSegments(bySpeaker, {
       sessionStartMs: session.startedAt,
-      aliases: speakerNames(config),
-      participants: readParticipants(sessionDir),
-      ...(campaign ? { characters: charactersByAccount(config, campaign) } : {}),
+      nameFor: sessionNamer(config, session, readParticipants(sessionDir)),
       mergeGapMs: config.transcript.merge_gap_seconds * 1000,
       maxLineMs: config.transcript.max_line_seconds * 1000,
-      noJoin: new Set(sharedAccounts(config).keys()),
+      keepApart: keepSharedApart(config, session),
     });
   }
 }

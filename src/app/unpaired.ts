@@ -1,4 +1,4 @@
-import { campaignFor } from '../config/roster.js';
+import { campaignFor, rosterOverall } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
 import { readJson, readSessionInfo, writeJson } from '../session/layout.js';
 import { rosterId } from '../shared/ids.js';
@@ -14,7 +14,9 @@ export type UnpairedAction = { action: 'link'; speaker: string } | { action: 'ne
 /** The session's unpaired accounts that still need a decision under the current speakers. */
 export function pendingUnpaired(sessionDir: string, config: Config | null): UnpairedSpeaker[] {
   const all = readJson<UnpairedSpeaker[]>(summaryPaths.unpaired(sessionDir)) ?? [];
-  const linked = new Set(config ? Object.values(config.speakers).flatMap((s) => s.discord) : []);
+  // Linked in the settings, or put on an account for this session.
+  const roster = config ? rosterOverall(config, readSessionInfo(sessionDir).tracks) : null;
+  const linked = new Set(roster ? Object.values(roster.speakers).flatMap((s) => s.discord) : []);
   return all.filter((u) => !u.dismissed && !linked.has(u.userId));
 }
 

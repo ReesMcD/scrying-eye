@@ -5,14 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseConfig } from '../src/config/load.js';
 import { paths, writeJson } from '../src/session/layout.js';
-import { formatOffset, mergeSegments, mergeSession, renderMarkdown } from '../src/transcript/merge.js';
+import { formatOffset, mergeSegments, mergeSession, namer, renderMarkdown } from '../src/transcript/merge.js';
 
 const start = Date.UTC(2026, 8, 25, 23, 0, 0);
 const s = (sec: number, dur: number, text: string) => ({ startMs: start + sec * 1000, endMs: start + (sec + dur) * 1000, text, utteranceStartMs: start });
 const opts = {
   sessionStartMs: start,
-  aliases: { '111': 'Rees' },
-  participants: { '111': { displayName: 'rees_d' }, '222': { displayName: 'Sam' } },
+  nameFor: namer({ aliases: { '111': 'Rees' }, participants: { '111': { displayName: 'rees_d' }, '222': { displayName: 'Sam' } } }),
   mergeGapMs: 2000,
   maxLineMs: 60_000,
 };

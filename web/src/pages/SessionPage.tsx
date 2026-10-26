@@ -7,6 +7,7 @@ import { Badge, Empty, Toggle } from '../ui';
 import { applyJobUpdate, withJob } from '../jobs';
 import { RecapCard } from './RecapCard';
 import { UnpairedCard } from './UnpairedCard';
+import { MicsCard } from './MicsCard';
 import { SessionHeader } from './SessionHeader';
 
 type Tab = 'transcript' | 'speakers' | 'summary';
@@ -129,6 +130,7 @@ export function SessionPage({ id }: { id: string }) {
       </div>
 
       <UnpairedCard s={s} onSaved={saved} />
+      <MicsCard s={s} onSaved={saved} />
 
       <div className="tabs" role="tablist">
         {(['summary', 'speakers', 'transcript'] as Tab[])

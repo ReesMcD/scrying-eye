@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import type { Config } from '../config/schema.js';
 import { paths, readJson, writeJson, type SessionInfo } from '../session/layout.js';
 import { formatOffset, renderMarkdown, type TranscriptLine } from '../transcript/merge.js';
-import { campaignFor, sharedAccounts, unpairedSpeakers } from '../config/roster.js';
+import { campaignFor, rosterOverall, sharedAnyTime, unpairedSpeakers } from '../config/roster.js';
 import { chunkTranscript, formatChunk } from './chunk.js';
 import { runChunkPass } from './chunkPass.js';
 import { cleanTranscript, type CleanupResult } from './cleanup.js';
@@ -94,7 +94,8 @@ export async function summarizeSession(sessionDir: string, config: Config, confi
 
   // 1. Relabel lines on shared Discord accounts (speakers.<id>.disambiguate).
   let labelling: Awaited<ReturnType<typeof disambiguateSession>> | undefined;
-  if ([...sharedAccounts(config).keys()].some((id) => lines.some((l) => l.userId === id))) {
+  const shared = sharedAnyTime(config, session.tracks);
+  if (lines.some((l) => shared.has(l.userId))) {
     labelling = await disambiguateSession(sessionDir, config, model, passOpts);
     lines = labelling.lines;
     for (const m of labelling.modelsUsed) used.add(m);
@@ -120,7 +121,7 @@ export async function summarizeSession(sessionDir: string, config: Config, confi
   // Who isn't on the roster yet, with the clean-up's guesses; "Ignore" from an earlier run is kept.
   const campaign = campaignFor(config, session);
   const dismissed = new Set((readJson<UnpairedSpeaker[]>(summaryPaths.unpaired(sessionDir)) ?? []).filter((u) => u.dismissed).map((u) => u.userId));
-  const unpaired = (cleanup?.unpaired ?? unpairedSpeakers(config, lines)).map((u) => (dismissed.has(u.userId) ? { ...u, dismissed: true } : u));
+  const unpaired = (cleanup?.unpaired ?? unpairedSpeakers(rosterOverall(config, session.tracks), lines)).map((u) => (dismissed.has(u.userId) ? { ...u, dismissed: true } : u));
   writeJson(summaryPaths.unpaired(sessionDir), unpaired);
 
   // 3. Extract notes per chunk.

@@ -1,5 +1,5 @@
 import type { Config } from './schema.js';
-import type { SessionInfo, TranscriptLine, UnpairedSpeaker } from '../shared/types.js';
+import type { SessionInfo, TrackSwitch, TranscriptLine, UnpairedSpeaker } from '../shared/types.js';
 
 /**
  * Speakers, campaigns and characters are set up separately in config.yaml; this module answers
@@ -43,6 +43,48 @@ function speakersByAccount(roster: Pick<Config, 'speakers'>): Map<string, string
   const out = new Map<string, string[]>();
   for (const [id, s] of Object.entries(roster.speakers)) for (const account of s.discord) out.set(account, [...(out.get(account) ?? []), id]);
   return out;
+}
+
+/**
+ * The speakers as they stood at one moment of a session (#71): each account a session's `tracks`
+ * mention carries the speakers its latest switch at or before `offsetMs` names. Accounts it
+ * doesn't mention (or not yet) keep the settings.
+ */
+export function rosterAt<R extends Pick<Config, 'speakers'>>(roster: R, tracks: readonly TrackSwitch[] | undefined, offsetMs: number): R {
+  const governing = new Map<string, TrackSwitch>();
+  for (const t of tracks ?? []) if (t.fromMs <= offsetMs && (governing.get(t.account)?.fromMs ?? -1) <= t.fromMs) governing.set(t.account, t);
+  if (!governing.size) return roster;
+  const speakers = Object.fromEntries(
+    Object.entries(roster.speakers).map(([id, s]) => [
+      id,
+      { ...s, discord: [...s.discord.filter((a) => !governing.has(a)), ...[...governing].filter(([, t]) => t.speakers.includes(id)).map(([a]) => a)] },
+    ]),
+  );
+  return { ...roster, speakers };
+}
+
+/** When who's-on-which-account changes in a session: 0, then each switch time, in order. */
+export function trackEpochs(tracks: readonly TrackSwitch[] | undefined): number[] {
+  return [...new Set([0, ...(tracks ?? []).map((t) => t.fromMs)])].sort((a, b) => a - b);
+}
+
+/** The roster for questions about the whole session (who's unpaired, who's at the table): everyone on each account at any time. */
+export function rosterOverall<R extends Pick<Config, 'speakers'>>(roster: R, tracks: readonly TrackSwitch[] | undefined): R {
+  if (!tracks?.length) return roster;
+  const rosters = trackEpochs(tracks).map((at) => rosterAt(roster, tracks, at));
+  const speakers = Object.fromEntries(Object.entries(roster.speakers).map(([id, s]) => [id, { ...s, discord: [...new Set(rosters.flatMap((r) => r.speakers[id]!.discord))] }]));
+  return { ...roster, speakers };
+}
+
+/** Whether an account carries more than one speaker at a moment of the session. */
+export function sharedAt(roster: Roster, tracks: readonly TrackSwitch[] | undefined): (account: string, offsetMs: number) => boolean {
+  const epochs = trackEpochs(tracks).map((at) => ({ at, shared: new Set(sharedAccounts(rosterAt(roster, tracks, at)).keys()) }));
+  return (account, offsetMs) => (epochs.findLast((e) => e.at <= offsetMs) ?? epochs[0]!).shared.has(account);
+}
+
+/** Accounts with more than one speaker on them at some point of the session. */
+export function sharedAnyTime(roster: Roster, tracks: readonly TrackSwitch[] | undefined): Set<string> {
+  return new Set(trackEpochs(tracks).flatMap((at) => [...sharedAccounts(rosterAt(roster, tracks, at)).keys()]));
 }
 
 /** Account → name, for Discord accounts with exactly one speaker. */

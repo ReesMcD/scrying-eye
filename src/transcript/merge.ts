@@ -1,7 +1,7 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { writeFileAtomic } from '../util/files.js';
 import { join } from 'node:path';
-import { campaignFor, charactersByAccount, sharedAccounts, speakerNames } from '../config/roster.js';
+import { campaignFor, charactersByAccount, rosterAt, sharedAt, speakerNames, trackEpochs } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
 import { paths, readJson, readParticipants, readRolls, readSessionInfo, writeJson, type Participant, type RollNote, type SessionInfo } from '../session/layout.js';
 import type { SpeakerTranscript } from '../transcription/transcribeSession.js';
@@ -36,16 +36,31 @@ export function formatOffset(ms: number): string {
 export interface JoinOptions {
   mergeGapMs: number;
   maxLineMs: number;
-  /** Accounts whose lines are never joined (shared accounts, so each line can be relabelled). */
-  noJoin?: ReadonlySet<string>;
+  /** Lines never joined to another (on a shared account, so each can be relabelled). */
+  keepApart?: (line: Pick<TranscriptLine, 'userId' | 'offsetMs'>) => boolean;
 }
 
-export interface MergeOptions extends JoinOptions {
-  sessionStartMs: number;
+export interface Naming {
   aliases: Record<string, string>;
   participants: Record<string, Participant>;
   /** userId → character name, for campaign sessions: lines are named by character. */
   characters?: Record<string, string>;
+}
+
+/** How a line on an account is named: its character (with the person as `player`), else the person. */
+export type NameFor = (userId: string, offsetMs: number) => Pick<TranscriptLine, 'speaker' | 'player'>;
+
+export function namer(n: Naming): NameFor {
+  return (userId) => {
+    const person = speakerName(userId, n.aliases, n.participants);
+    const character = n.characters?.[userId];
+    return { speaker: character ?? person, ...(character && character !== person ? { player: person } : {}) };
+  };
+}
+
+export interface MergeOptions extends JoinOptions {
+  sessionStartMs: number;
+  nameFor: NameFor;
 }
 
 /** Joins consecutive lines from the same speaker when the pause is short. Input must be time-ordered. */
@@ -58,7 +73,8 @@ export function joinLines(lines: readonly TranscriptLine[], opts: JoinOptions): 
       prev.userId === line.userId &&
       prev.speaker === line.speaker &&
       prev.inferred?.confidence === line.inferred?.confidence &&
-      !opts.noJoin?.has(line.userId) &&
+      !opts.keepApart?.(prev) &&
+      !opts.keepApart?.(line) &&
       line.startMs - prev.endMs <= opts.mergeGapMs &&
       line.endMs - prev.startMs <= opts.maxLineMs
     ) {
@@ -82,38 +98,39 @@ export function mergeSegments(bySpeaker: ReadonlyMap<string, readonly SpeakerSeg
   const lines: TranscriptLine[] = all
     .filter((seg) => seg.text.trim())
     .map((seg): TranscriptLine => {
-      const person = speakerName(seg.userId, opts.aliases, opts.participants);
-      const character = opts.characters?.[seg.userId];
-      return {
-        userId: seg.userId,
-        speaker: character ?? person,
-        ...(character && character !== person ? { player: person } : {}),
-        offsetMs: seg.startMs - opts.sessionStartMs,
-        startMs: seg.startMs,
-        endMs: seg.endMs,
-        text: seg.text.trim(),
-      };
+      const offsetMs = seg.startMs - opts.sessionStartMs;
+      return { userId: seg.userId, ...opts.nameFor(seg.userId, offsetMs), offsetMs, startMs: seg.startMs, endMs: seg.endMs, text: seg.text.trim() };
     });
   return joinLines(lines, opts);
 }
 
 /** Puts /roll results among the spoken lines, named like the roller's speech: "[roll] Longsword: 1d20+5 = 22". */
-export function withRolls(lines: readonly TranscriptLine[], rolls: readonly RollNote[], opts: Pick<MergeOptions, 'sessionStartMs' | 'aliases' | 'participants' | 'characters'>): TranscriptLine[] {
+export function withRolls(lines: readonly TranscriptLine[], rolls: readonly RollNote[], sessionStartMs: number, nameFor: NameFor): TranscriptLine[] {
   if (!rolls.length) return [...lines];
   const rollLines = rolls.map((r): TranscriptLine => {
-    const person = speakerName(r.userId, opts.aliases, opts.participants);
-    const character = opts.characters?.[r.userId];
-    return {
-      userId: r.userId,
-      speaker: character ?? person,
-      ...(character && character !== person ? { player: person } : {}),
-      offsetMs: r.at - opts.sessionStartMs,
-      startMs: r.at,
-      endMs: r.at,
-      text: `[roll] ${r.text}`,
-    };
+    const offsetMs = r.at - sessionStartMs;
+    return { userId: r.userId, ...nameFor(r.userId, offsetMs), offsetMs, startMs: r.at, endMs: r.at, text: `[roll] ${r.text}` };
   });
   return [...lines, ...rollLines].sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * How a session's lines are named: by the settings, and where the session says who was on an
+ * account from some time on (#71), by who was on it at the line's time.
+ */
+export function sessionNamer(config: Config, session: SessionInfo, participants: Record<string, Participant>): NameFor {
+  const campaign = campaignFor(config, session);
+  const epochs = trackEpochs(session.tracks).map((fromMs) => {
+    const roster = rosterAt(config, session.tracks, fromMs);
+    return { fromMs, name: namer({ aliases: speakerNames(roster), participants, ...(campaign ? { characters: charactersByAccount(roster, campaign) } : {}) }) };
+  });
+  return (userId, offsetMs) => (epochs.findLast((e) => e.fromMs <= offsetMs) ?? epochs[0]!).name(userId, offsetMs);
+}
+
+/** Lines on an account while it's shared stay apart, so each can be given to whoever said it. */
+export function keepSharedApart(config: Config, session: SessionInfo): MergeOptions['keepApart'] {
+  const shared = sharedAt(config, session.tracks);
+  return (line) => shared(line.userId, line.offsetMs);
 }
 
 function formatDate(ms: number, timeZone: string | undefined): string {
@@ -159,20 +176,15 @@ export function mergeSession(sessionDir: string, config: Config): MergeResult {
     if (t) bySpeaker.set(t.userId, t.segments);
   }
   const session = readSessionInfo(sessionDir);
-  const campaign = campaignFor(config, session);
-  const naming = {
-    sessionStartMs: session.startedAt,
-    aliases: speakerNames(config),
-    participants: readParticipants(sessionDir),
-    ...(campaign ? { characters: charactersByAccount(config, campaign) } : {}),
-  };
+  const nameFor = sessionNamer(config, session, readParticipants(sessionDir));
   const spoken = mergeSegments(bySpeaker, {
-    ...naming,
+    sessionStartMs: session.startedAt,
+    nameFor,
     mergeGapMs: config.transcript.merge_gap_seconds * 1000,
     maxLineMs: config.transcript.max_line_seconds * 1000,
-    noJoin: new Set(sharedAccounts(config).keys()),
+    keepApart: keepSharedApart(config, session),
   });
-  const lines = withRolls(spoken, readRolls(sessionDir), naming);
+  const lines = withRolls(spoken, readRolls(sessionDir), session.startedAt, nameFor);
   writeJson(paths.segments(sessionDir), { session, lines });
   const file = paths.transcript(sessionDir);
   writeFileAtomic(file, renderMarkdown(session, lines, config.transcript.timezone));
