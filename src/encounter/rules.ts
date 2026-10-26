@@ -350,6 +350,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
     case 'room':
     case 'fight':
     case 'endFight':
+    case 'stairs':
       applyDungeonAction(s, action, deps, log);
       break;
     case 'clearTemplate': {
@@ -397,7 +398,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       throw new EncounterError('Unknown action');
   }
   // Fog that follows the party: reveal what their tokens can see after anything that changes it.
-  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal'].includes(action.type)) revealPartySight(s, action.type === 'move' ? action.token : undefined);
+  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal', 'stairs'].includes(action.type)) revealPartySight(s, action.type === 'move' ? action.token : undefined);
   return s;
 }
 

@@ -458,6 +458,9 @@ What's in it:
       it.
     - **Fight here** puts the room's creatures in the room and goes to initiative. **End fight**
       goes back to exploring: the fallen leave the map, and an emptied room is cleared.
+    - **Levels** (dnd-wiki #110): a dungeon with several floors has a plan for each. The rooms
+      are listed by level, and **Take the stairs down to level 2** moves the party to the stairs'
+      other end on that plan. Each level keeps its own fog, and whoever stayed behind stays there.
     - What happens goes back to the wiki as it happens, and the whole run reaches the recap. This
       needs a wiki with the dungeons API (ReesMcD/dnd-wiki#106); until then the list says so.
   - **Initiative:** monsters roll theirs, players type theirs (or send it from their phone), ties go

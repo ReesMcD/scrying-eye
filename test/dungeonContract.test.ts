@@ -126,3 +126,63 @@ test('a progress report the wiki refuses says why; a wiki without the route is o
   assert.match(await send(new Response('<html>Not found</html>', { status: 404 })), /doesn’t take dungeon progress yet/);
   assert.equal(await send(Response.json({ ok: true, id: 'the-old-mill', run: false, changed: true })), 'Dungeon progress sent to the wiki');
 });
+
+// --- A dungeon on two levels (#110) ------------------------------------------------------------
+
+/** A plan: a room inside walls, with stairs at the given squares. */
+function plan(level: number, room: { id: string; rect: [number, number, number, number] }, stairs: Array<Record<string, unknown>>) {
+  return {
+    v: 1, width: 10, height: 8, ground: 'rock', lighting: 'dark', level,
+    terrain: [
+      { kind: 'wall', rect: [0, 0, 10, 1] }, { kind: 'wall', rect: [0, 7, 10, 1] }, { kind: 'wall', rect: [0, 1, 1, 6] }, { kind: 'wall', rect: [9, 1, 1, 6] },
+      { kind: 'floor', rect: room.rect, ground: 'stone' },
+      ...stairs.map((x) => ({ kind: 'floor', asset: 'stairs', ...x })),
+    ],
+    tokens: [], notes: [], rooms: [{ id: room.id, name: room.id, rect: room.rect }],
+  };
+}
+const CRYPT: WikiDungeon = {
+  ...MILL,
+  id: 'chapel-crypt',
+  title: 'Chapel Crypt',
+  map: null,
+  maps: [
+    { level: 1, map: plan(1, { id: '1', rect: [1, 1, 8, 6] }, [{ cells: [[1, 1]], label: 'stairs (the way in)', to: { level: 0 }, rises: 'up' }, { cells: [[8, 6]], to: { level: 2, at: [2, 2] }, rises: 'down' }]) },
+    { level: 2, map: plan(2, { id: '2', rect: [1, 1, 8, 6] }, [{ cells: [[2, 2]], to: { level: 1, at: [8, 6] }, rises: 'up' }]) },
+  ],
+  rooms: [
+    { ...MILL.rooms[1]!, key: '1', name: 'Nave', level: 1, encounter: null },
+    { ...MILL.rooms[0]!, key: '2', name: 'Ossuary', level: 2 },
+  ],
+};
+CRYPT.map = CRYPT.maps![0]!.map;
+
+test('a dungeon on two levels: start at the way in, take the stairs down and back, fog kept per level', () => {
+  let s = encounterFromDungeon(CRYPT, 'd2', deps());
+  assert.deepEqual([s.dungeon!.level, s.map!.level], [1, 1]);
+  assert.deepEqual(s.map!.tokens[0]!.at, [1, 1], 'at the way in, not the stairs down');
+  assert.throws(() => applyAction(s, { type: 'fight', room: '2' }, deps()), /Ossuary is on level 2: take the stairs first/);
+  const down = s.map!.terrain.findIndex((t) => t.to?.level === 2);
+  assert.throws(() => applyAction(s, { type: 'stairs', index: s.map!.terrain.findIndex((t) => t.to?.level === 0) }, deps()), /don’t lead to another level/, 'the way out isn’t a level');
+
+  s = applyAction(s, { type: 'move', token: 'aria', at: [8, 6] }, deps());
+  const seenUp = s.fog!.revealed.length;
+  s = applyAction(s, { type: 'stairs', index: down }, deps());
+  assert.deepEqual([s.dungeon!.level, s.map!.level], [2, 2]);
+  assert.deepEqual(s.map!.tokens.map((t) => [t.id, t.at]), [['aria', [2, 2]]], 'out at the bottom of the stairs');
+  assert.ok(s.fog!.revealed.includes('5,4'), 'they see the room they came down into');
+  assert.ok(s.fog!.revealed.length < seenUp + 60, 'and only that: level 1’s fog stayed upstairs');
+  assert.equal(s.dungeon!.levels!.find((x) => x.level === 1)!.map.tokens.length, 0, 'nobody left upstairs');
+  assert.match(s.log.at(-1)!.text, /takes the stairs down to level 2/);
+  assert.equal(s.dungeon!.current, '2', 'the panel opens the room they came out in');
+
+  s = applyAction(s, { type: 'fight', room: '2' }, deps());
+  assert.throws(() => applyAction(s, { type: 'stairs', index: s.map!.terrain.findIndex((t) => t.to?.level === 1) }, deps()), /Finish this fight first/);
+  const monsters = s.map!.tokens.filter((t) => t.kind === 'monster').length;
+  s = applyAction(s, { type: 'endFight' }, deps());
+  s = applyAction(s, { type: 'stairs', index: s.map!.terrain.findIndex((t) => t.to?.level === 1) }, deps());
+  assert.equal(s.dungeon!.level, 1);
+  assert.deepEqual(s.map!.tokens.find((t) => t.id === 'aria')!.at, [8, 6], 'back up by the same stairs');
+  assert.equal(s.fog!.revealed.length, seenUp, 'what they saw upstairs is still seen');
+  assert.equal(s.dungeon!.levels!.find((x) => x.level === 2)!.map.tokens.filter((t) => t.kind === 'monster').length, monsters, 'the skeletons stay below');
+});
