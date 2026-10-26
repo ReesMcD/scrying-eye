@@ -1,4 +1,5 @@
-import type { BotStatus, GuildInfo, LiveTranscript, LiveUpdate, RecordingStatus } from '../shared/types.js';
+import type { BotStatus, GuildInfo, LiveTranscript, LiveUpdate, PollsState, RecordingStatus } from '../shared/types.js';
+import type { PollPoster } from '../polls/PollService.js';
 
 export type { LiveUpdate };
 import type { EncounterPost } from './encounterCommand.js';
@@ -20,6 +21,10 @@ export interface BotControl {
   off(event: 'live', listener: (u: LiveUpdate) => void): unknown;
   /** Posts an encounter's join link in Discord; answers with where it went. */
   postEncounter?(post: EncounterPost): Promise<{ channelName: string }>;
+  /** Posts and reads scheduled polls; null while not connected. */
+  pollPoster?(): PollPoster | null;
+  /** Channels polls can go to, and roles a winner can mention. */
+  pollTargets?(): Pick<PollsState, 'channels' | 'roles'>;
 }
 
 export type LiveSnapshot = LiveTranscript & { sessionId: string | null };

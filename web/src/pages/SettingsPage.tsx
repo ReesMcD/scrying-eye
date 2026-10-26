@@ -14,8 +14,9 @@ import { KeysSection } from './settings/KeysSection';
 import { UploadSection } from './settings/UploadSection';
 import { PlayersSection } from './settings/PlayersSection';
 import { MapArtSection } from './settings/MapArtSection';
+import { PollsSection } from './settings/PollsSection';
 
-type Section = 'keys' | 'recording' | 'speakers' | 'campaigns' | 'characters' | 'transcription' | 'summary' | 'upload' | 'players' | 'maps' | 'prompts' | 'yaml';
+type Section = 'keys' | 'recording' | 'speakers' | 'campaigns' | 'characters' | 'transcription' | 'summary' | 'upload' | 'players' | 'maps' | 'polls' | 'prompts' | 'yaml';
 const SECTIONS: { key: Section; label: string }[] = [
   ...(window.sessionBot ? [{ key: 'keys' as Section, label: 'Keys & phone' }] : []),
   { key: 'speakers', label: 'Speakers' },
@@ -26,6 +27,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'upload', label: 'Upload' },
   { key: 'players', label: 'Encounters' },
   { key: 'maps', label: 'Battle maps' },
+  { key: 'polls', label: 'Polls' },
   { key: 'transcription', label: 'Transcription' },
   { key: 'prompts', label: 'Prompts' },
   { key: 'yaml', label: 'YAML' },
@@ -110,10 +112,11 @@ export function SettingsPage({ initial }: { initial?: string | undefined }) {
       {draft && section === 'upload' && <UploadSection config={draft} update={update} err={err} />}
       {draft && section === 'players' && <PlayersSection config={draft} update={update} err={err} />}
       {draft && section === 'maps' && <MapArtSection config={draft} update={update} err={err} />}
+      {section === 'polls' && <PollsSection />}
       {section === 'prompts' && <PromptsSection />}
       {section === 'yaml' && <YamlSection state={state} onSaved={load} />}
 
-      {draft && section !== 'prompts' && section !== 'yaml' && section !== 'keys' && (
+      {draft && section !== 'prompts' && section !== 'yaml' && section !== 'keys' && section !== 'polls' && (
         <div className="sticky-save">
           <span className={errors.length ? 'field-error' : 'muted small'}>{status || (dirty ? 'Unsaved changes' : 'No changes')}</span>
           <div className="row">
