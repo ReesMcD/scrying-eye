@@ -187,15 +187,15 @@ export class MapEngine3d {
     this.moveCamera(new THREE.Vector3(cx, 0, cz), new THREE.Vector3(cx, this.fitDistance(area.w, area.d), cz + 0.01));
   }
 
-  /** Closer, onto a token (whose turn it is, or my own). */
-  lookAt(tokenId: string): void {
+  /** Closer, onto a token (whose turn it is, or my own); `distance` in squares. */
+  lookAt(tokenId: string, distance?: number): void {
     const { map } = this.props();
     const t = map.tokens.find((x) => x.id === tokenId);
     if (!t || !this.model) return;
     const f = figureOf(this.model, t, t.at);
     const target = new THREE.Vector3(f.x, f.y, f.z);
     // Keep the direction we're looking from, at a closer distance.
-    const offset = this.camera.position.clone().sub(this.controls.target).setLength(Math.max(6, f.height * 5));
+    const offset = this.camera.position.clone().sub(this.controls.target).setLength(distance ?? Math.max(6, f.height * 5));
     this.moveCamera(target, target.clone().add(offset));
   }
 

@@ -4,6 +4,9 @@ import type { ArtPlan, PlayerRequest, PlayerView } from '../../../src/shared/typ
 export const code = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).at(-1) ?? '');
 const KEY = `scrying-eye-play:${code}`;
 
+/** `/play/<code>?screen`: the view the DM shares on Discord, watching rather than playing. */
+export const screenMode = new URLSearchParams(window.location.search).has('screen');
+
 function storage(): Storage | undefined {
   try {
     return window.localStorage;
@@ -15,6 +18,8 @@ function storage(): Storage | undefined {
 /** This device's token for this link, remembered so a reload keeps your character. */
 export const device = {
   get token(): string {
+    // The shared screen is never anyone's character, even on a browser that joined as one.
+    if (screenMode) return '';
     return storage()?.getItem(KEY) ?? '';
   },
   set token(t: string) {

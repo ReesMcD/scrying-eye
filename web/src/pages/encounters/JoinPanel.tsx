@@ -67,6 +67,11 @@ export function JoinPanel({ state }: { state: EncounterState }) {
         <button onClick={() => void copy()} disabled={!shown}>
           Copy link
         </button>
+        {link?.local && (
+          <a className="button" href={`${link.local}?screen`} target="_blank" rel="noreferrer" title="The map in 3D, following the turns, as players see it: open it in a browser and share that tab or window on Discord">
+            Screen view
+          </a>
+        )}
         <button onClick={() => (confirmNew ? void replace() : setConfirmNew(true))} onBlur={() => setConfirmNew(false)}>
           {confirmNew ? 'Tap again: everyone rejoins' : 'New link'}
         </button>
