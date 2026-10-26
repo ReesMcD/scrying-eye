@@ -404,3 +404,20 @@ details > summary { cursor: pointer; }
 .poll-results li > span:last-child { position: relative; }
 .poll-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); }
 input.narrow { width: 64px; display: inline-block; }
+
+/* Dungeons (#106) */
+.dungeon-rooms { margin: 8px 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.dungeon-rooms-nav { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.room-chip { white-space: nowrap; flex: none; }
+.room-chip.entered:not(.on) { border-color: var(--accent); }
+.room-chip.cleared:not(.on) { opacity: 0.7; }
+.room-card h3 { margin: 14px 0 4px; font-size: 1rem; }
+.room-card h4 { margin: 10px 0 2px; font-size: 0.85rem; color: var(--text-2); }
+.room-flags { gap: 6px; }
+.room-part { border-top: 1px solid var(--border); margin-top: 10px; }
+.room-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 6px 0; }
+.room-facts dt { color: var(--muted); }
+.room-facts dd { margin: 0; }
+.hint-ladder li { margin-bottom: 2px; }
+.room-exits { margin-top: 10px; gap: 4px 10px; }
+.end-fight { margin-bottom: 8px; }

@@ -20,14 +20,17 @@ export class WikiEncountersError extends Error {
   }
 }
 
-/** /api/encounters on the wiki recaps go to, or an explanation of what to set up. */
-export function encountersUrl(config: Config): URL {
+/** An API on the wiki recaps go to (/api/encounters, /api/dungeons), or an explanation of what to set up. */
+export function wikiApiUrl(config: Config, path: string): URL {
   const { url, format } = config.upload;
   if (!url || format !== 'ardent-weave') throw new WikiEncountersError('Set Settings → Upload to your Ardent Weave wiki first: encounters come from the same wiki and key', 409);
-  return new URL('/api/encounters', url);
+  return new URL(path, url);
 }
 
-async function getJson<T>(url: URL, token: string | undefined, doFetch: typeof fetch): Promise<T> {
+/** /api/encounters on the wiki recaps go to, or an explanation of what to set up. */
+export const encountersUrl = (config: Config): URL => wikiApiUrl(config, '/api/encounters');
+
+export async function getJson<T>(url: URL, token: string | undefined, doFetch: typeof fetch): Promise<T> {
   if (!token) throw new WikiEncountersError('The wiki key is missing: add it under Settings → Keys (the same key as recap uploads)', 409);
   let res: Response;
   try {

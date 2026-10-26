@@ -448,6 +448,18 @@ What's in it:
 - **Encounters**: run a fight.
   - **Start one:** pick one Claude prepared in your wiki (ReesMcD/dnd-wiki, `wiki_battle`; it uses
     the same address and key as **Upload**), or start a blank one.
+  - **Dungeons:** the wiki's dungeons (`wiki_dungeon`, with a floor plan) are listed too. **Run**
+    one and its floor plan is the map: the party starts at the stairs, fog of war follows what
+    they see, and players' phones show only that.
+    - A room panel (tap a room on the map, or its tab) shows its read-aloud, the fight, the trap
+      (trigger, how to spot and disarm it, DCs, damage), the puzzle (premise, the solution behind a
+      tap, clues, and hints given out one at a time), treasure and exits.
+    - **The party enters** reveals the room on the map. **Cleared**, **Looted** and **Solved** mark
+      it.
+    - **Fight here** puts the room's creatures in the room and goes to initiative. **End fight**
+      goes back to exploring: the fallen leave the map, and an emptied room is cleared.
+    - What happens goes back to the wiki as it happens, and the whole run reaches the recap. This
+      needs a wiki with the dungeons API (ReesMcD/dnd-wiki#106); until then the list says so.
   - **Initiative:** monsters roll theirs, players type theirs (or send it from their phone), ties go
     to Dexterity.
   - **The tracker:** Next and Previous turn, damage and healing with temporary HP, the 2024

@@ -3,6 +3,7 @@ import { ApiError, api } from '../../api';
 import { href } from '../../router';
 import type { EncounterOutcome, EncounterState, WikiEncounter, WikiEncounterSummary } from '../../types';
 import { Badge, Empty } from '../../ui';
+import { Dungeons } from './Dungeons';
 
 /** Before a fight: the wiki's prepared encounters, or a blank one; and how the last one ended. */
 export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | null; onStarted: (s: EncounterState) => void }) {
@@ -17,7 +18,7 @@ export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | nu
     api<WikiEncounterSummary[]>('/encounters/wiki').then(setList, (e: Error) => setListError({ message: e.message, setup: e instanceof ApiError && e.status === 409 }));
   }, []);
 
-  const start = async (body: { wikiId: string; campaign: string } | { title: string }) => {
+  const start = async (body: { wikiId: string; campaign: string } | { dungeonId: string; campaign: string } | { title: string }) => {
     setBusy(true);
     setError('');
     try {
@@ -72,6 +73,8 @@ export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | nu
           ))}
         </details>
       )}
+
+      <Dungeons busy={busy} onRun={(dungeonId, campaign) => void start({ dungeonId, campaign })} />
 
       <h2>Or start a blank one</h2>
       <form className="card row" onSubmit={startBlank}>

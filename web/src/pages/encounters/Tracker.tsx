@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { DicePanel } from '../../dice/DicePanel';
 import { Badge, Toggle } from '../../ui';
 import { CombatantPanel } from './CombatantPanel';
+import { DungeonPanel } from './DungeonPanel';
 import { JoinPanel } from './JoinPanel';
 import { MapCard } from './MapCard';
 
@@ -16,6 +17,8 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
   const byId = new Map(state.combatants.map((c) => [c.id, c]));
   const ordered = state.order.map((id) => byId.get(id)).filter((c): c is Combatant => !!c);
   const running = state.status === 'running';
+  const exploring = state.status === 'exploring';
+  const fighting = !!state.dungeon?.fight;
   const missing = state.combatants.filter((c) => c.initiative === null);
   const checks = state.combatants.filter((c) => c.concentrationCheck !== null);
   const current = state.turn ? byId.get(state.turn) : undefined;
@@ -25,14 +28,22 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
       <div className="row spread tracker-head">
         <div>
           <h1>{state.title}</h1>
-          <div className="muted small">{running ? `Round ${state.round} · ${current?.name ?? ''}’s turn` : 'Setting up: initiative first'}</div>
+          <div className="muted small">{exploring ? 'Exploring: move the party on the map; open a room for what’s there' : running ? `Round ${state.round} · ${current?.name ?? ''}’s turn` : 'Setting up: initiative first'}</div>
         </div>
         <button className="danger" onClick={() => (confirmEnd ? void onEnd() : setConfirmEnd(true))} onBlur={() => setConfirmEnd(false)}>
-          {confirmEnd ? 'Tap again to end' : 'End encounter'}
+          {confirmEnd ? 'Tap again to end' : state.dungeon ? 'Leave the dungeon' : 'End encounter'}
         </button>
       </div>
 
+      {state.dungeon && <DungeonPanel state={state} act={act} />}
+
+      {!exploring && (
       <div className="card tracker-controls">
+        {fighting && (
+          <button className="end-fight" onClick={() => void act({ type: 'endFight' })} title="Back to exploring; the fallen leave the map">
+            End fight
+          </button>
+        )}
         {running ? (
           <div className="row">
             <button onClick={() => void act({ type: 'previous' })}>Previous</button>
@@ -52,6 +63,7 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
           </div>
         )}
       </div>
+      )}
 
       {assistant && running && current && current.kind !== 'pc' && <TurnIdea key={`${state.round}-${current.id}`} combatant={current} />}
 

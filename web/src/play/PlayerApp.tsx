@@ -131,7 +131,7 @@ function Fight({ view, act }: { view: PlayerView; act: (r: Parameters<typeof pla
   return (
     <div className="stack">
       <div>
-        <p className="muted small play-kicker">{view.status === 'running' ? `Round ${view.round}` : 'Getting ready'}</p>
+        <p className="muted small play-kicker">{view.status === 'running' ? `Round ${view.round}` : view.status === 'exploring' ? 'Exploring' : 'Getting ready'}</p>
         <h1>{view.title}</h1>
       </div>
       {myTurn ? (

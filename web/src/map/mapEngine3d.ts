@@ -21,6 +21,10 @@ const TAGS_FROM_PX = 22;
 
 const PART_COLOUR: Record<BoxPart, number> = {
   wall: 0x8d8a84,
+  rock: 0x6b6258,
+  mass: 0x34302b,
+  chest: 0x7b4f24,
+  altar: 0x9a948a,
   secret: 0x8d8a84,
   door: 0x8a5a2b,
   lintel: 0x8d8a84,
@@ -164,7 +168,7 @@ export class MapEngine3d {
       const z = Math.min(...zs);
       return { x, z, w: Math.max(...xs) - x + 1, d: Math.max(...zs) - z + 1 };
     }
-    return { x: 0, z: 0, w: m.width, d: m.height };
+    return m.open;
   }
 
   /** How far back the camera stands to fit an area in the box, whatever its shape. */
@@ -242,7 +246,7 @@ export class MapEngine3d {
     const matrix = new THREE.Matrix4();
     for (const [k, boxes] of byPart) {
       const part = k.startsWith('door') ? 'door' : (k as BoxPart);
-      const material = new THREE.MeshStandardMaterial({ color: k === 'door-locked' ? 0x5e3b1c : PART_COLOUR[part], roughness: part === 'door' || part === 'cover' ? 0.75 : 0.92 });
+      const material = new THREE.MeshStandardMaterial({ color: k === 'door-locked' ? 0x5e3b1c : PART_COLOUR[part], roughness: part === 'door' || part === 'cover' || part === 'chest' ? 0.75 : 0.92, flatShading: part === 'rock' });
       // The DM sees which wall is a secret door.
       if (part === 'secret') material.emissive = new THREE.Color(this.colors.warn).multiplyScalar(0.35);
       const mesh = new THREE.InstancedMesh(unit, material, boxes.length);
@@ -250,7 +254,8 @@ export class MapEngine3d {
         matrix.compose(new THREE.Vector3(b.x + b.w / 2, b.y + b.h / 2, b.z + b.d / 2), new THREE.Quaternion(), new THREE.Vector3(b.w, b.h, b.d));
         mesh.setMatrixAt(i, matrix);
       });
-      mesh.castShadow = part !== 'elevation';
+      // Buried rock is only seen from above: it needn't throw shadows (most of a dungeon plan).
+      mesh.castShadow = part !== 'elevation' && part !== 'mass';
       mesh.receiveShadow = true;
       this.world.add(mesh);
     }
@@ -325,6 +330,25 @@ export class MapEngine3d {
       new THREE.CylinderGeometry(0.32, 0.36, 1, 14),
       new THREE.MeshStandardMaterial({ color: PART_COLOUR.wall, roughness: 0.9 }),
       pillars.map((p) => ({ p: new THREE.Vector3(p.x, p.y + p.h / 2, p.z), q: new THREE.Quaternion(), s: new THREE.Vector3(1, p.h, 1) })),
+    );
+    // A statue: a plinth and a rough standing figure, in stone.
+    const statues = m.props.filter((p) => p.kind === 'statue');
+    const stone = new THREE.MeshStandardMaterial({ color: 0xa29c92, roughness: 0.85 });
+    make(new THREE.BoxGeometry(0.7, 1, 0.7), stone, statues.map((p) => ({ p: new THREE.Vector3(p.x, p.y + p.h * 0.1, p.z), q: spin(p.seed), s: new THREE.Vector3(1, p.h * 0.2, 1) })));
+    make(new THREE.CapsuleGeometry(0.17, 1, 4, 10), stone, statues.map((p) => ({ p: new THREE.Vector3(p.x, p.y + p.h * 0.55, p.z), q: spin(p.seed), s: new THREE.Vector3(1, p.h * 0.45, 1) })));
+    // Stairs: three steps rising toward the wall they lead out through.
+    const stairs = m.props.filter((p) => p.kind === 'stairs');
+    make(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x9b958b, roughness: 0.9 }),
+      stairs.flatMap((p) =>
+        [0, 1, 2].map((n) => {
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.facing ?? 0);
+          const offset = new THREE.Vector3(0, 0, 0.33 - n * 0.33).applyQuaternion(q);
+          const h = (p.h / 3) * (n + 1);
+          return { p: new THREE.Vector3(p.x + offset.x, p.y + h / 2, p.z + offset.z), q, s: new THREE.Vector3(0.96, h, 0.33) };
+        }),
+      ),
     );
     const rocks = m.props.filter((p) => p.kind === 'rock');
     make(

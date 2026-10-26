@@ -503,8 +503,11 @@ export interface EncounterLogEntry {
 export interface EncounterState {
   id: string;
   title: string;
-  /** setup: adding combatants and initiative; running: turns; ended: over. */
-  status: 'setup' | 'running' | 'ended';
+  /**
+   * exploring: a dungeon between fights (#106); setup: adding combatants and initiative;
+   * running: turns; ended: over.
+   */
+  status: 'exploring' | 'setup' | 'running' | 'ended';
   round: number;
   /** Whose turn it is (a combatant id), while running. */
   turn: string | null;
@@ -534,6 +537,109 @@ export interface EncounterState {
   log: EncounterLogEntry[];
   /** The players' join link (its secret code) and who has joined. */
   join?: { code: string; players: JoinedPlayer[] };
+  /** A dungeon being run (#106): its rooms and what's happened in them. DM only. */
+  dungeon?: DungeonRun;
+}
+
+// --- Dungeons (ReesMcD/dnd-wiki#106) -------------------------------------------------------------
+
+/** A dungeon in the wiki's list (GET /api/dungeons). */
+export interface WikiDungeonSummary {
+  id: string;
+  title: string;
+  campaign: string;
+  place: string | null;
+  summary: string | null;
+  rooms: number;
+  party_level: number | null;
+  has_map: boolean;
+  run: boolean;
+  updated: string | null;
+}
+
+export interface DungeonPuzzle {
+  name: string;
+  premise: string | null;
+  solution: string | null;
+  clues: Array<{ text: string; where?: string | null }>;
+  hints: string[];
+  bypass: string | null;
+  fail: string | null;
+  reward: string | null;
+}
+
+export interface DungeonTrap {
+  text: string;
+  dc?: string | null;
+  attack?: string | null;
+  damage?: string | null;
+  trigger?: string | null;
+  detect?: string | null;
+  disarm?: string | null;
+}
+
+/** What's happened in a room. */
+export interface RoomProgress {
+  entered?: boolean;
+  cleared?: boolean;
+  looted?: boolean;
+  solved?: boolean;
+}
+
+/** One keyed room of a dungeon, as the wiki sends it. */
+export interface WikiDungeonRoom {
+  key: string;
+  name: string;
+  role: string | null;
+  read_aloud: string | null;
+  description: string | null;
+  dm: string | null;
+  exits: string[];
+  encounter: { text: string; difficulty?: string | null; xp?: number | null; creatures: Array<EncounterStatBlock & { count: number }>; encounter_id?: string | null } | null;
+  trap: DungeonTrap | null;
+  puzzle: DungeonPuzzle | null;
+  treasure: string | null;
+  state?: RoomProgress;
+}
+
+/** One dungeon from the wiki, ready to run (GET /api/dungeons/<id>). */
+export interface WikiDungeon {
+  id: string;
+  title: string;
+  campaign: string;
+  place: string | null;
+  summary: string | null;
+  read_aloud: string | null;
+  overview: string | null;
+  dm_notes: string | null;
+  map: Record<string, unknown> | null;
+  map_error?: string;
+  party: WikiEncounter['party'];
+  rooms: WikiDungeonRoom[];
+}
+
+/** A fight in a dungeon room, kept when it ends. */
+export interface DungeonFight {
+  room: string | null;
+  rounds: number;
+  defeated: string[];
+  xp: number;
+  at: number;
+}
+
+/** A dungeon being run: its content (DM only) and progress. */
+export interface DungeonRun {
+  wikiId: string;
+  campaign: string;
+  summary: string | null;
+  read_aloud: string | null;
+  /** `spawned`: its creatures are on the map already (they appear once, however many fights). */
+  rooms: Array<WikiDungeonRoom & { state: RoomProgress; hintsShown: number; spawned?: boolean }>;
+  /** The room the DM is looking at (usually where the party is). */
+  current: string | null;
+  /** The fight going on now: which room it started in. */
+  fight: { room: string | null; startedAt: number } | null;
+  fights: DungeonFight[];
 }
 
 /** A roll made in the tracker or on a player's phone. */
@@ -631,6 +737,12 @@ export type EncounterAction =
   | { type: 'template'; template: AreaTemplate; by?: string }
   /** Removes one spell area, or all of them; with `by`, only that person's. */
   | { type: 'clearTemplate'; id?: string; by?: string }
+  /** Dungeons: look at a room, and mark what's happened there (entering one reveals it). */
+  | { type: 'room'; key: string; entered?: boolean; cleared?: boolean; looted?: boolean; solved?: boolean; hintsShown?: number }
+  /** Dungeons: start the room's fight, its creatures placed in the room. */
+  | { type: 'fight'; room: string }
+  /** Dungeons: the fight is over; back to exploring. The fallen leave the map. */
+  | { type: 'endFight' }
   /** Rolls dice for the table; `by` is "dm" (the default) or a combatant id. */
   | { type: 'roll'; expression: string; label?: string; by?: string; secret?: boolean }
   /** Whether the table's rolls are posted to Discord too. */

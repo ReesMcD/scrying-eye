@@ -97,7 +97,13 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
       return;
     }
     const c = token ? byToken.get(token.id) : undefined;
-    if (c) onSelect(c.id);
+    if (c) {
+      onSelect(c.id);
+      return;
+    }
+    // In a dungeon: tapping a room opens it in the room panel.
+    const room = state.dungeon ? roomAt(map, at) : undefined;
+    if (room && state.dungeon?.rooms.some((r) => r.key === room.id)) void act({ type: 'room', key: room.id });
   };
 
   return (
