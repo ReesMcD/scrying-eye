@@ -22,5 +22,10 @@ export function playerTokenInfo(view: PlayerView): Record<string, TokenInfo> {
       ...(fighting ? { moved: view.moved[token] ?? 0, flanked: flanked.has(token) } : {}),
     };
   }
+  // Every visible token stands as its mini, in the turn order yet or not (before a fight, nobody is).
+  for (const t of map?.tokens ?? []) {
+    const mini = view.minis[t.id];
+    if (mini) info[t.id] = { ...(info[t.id] ?? { name: t.name }), mini };
+  }
   return info;
 }

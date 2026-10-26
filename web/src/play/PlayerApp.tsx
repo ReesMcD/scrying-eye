@@ -7,6 +7,7 @@ import { useAreaTool } from '../map/AreaTool';
 import { DicePanel, RollList } from '../dice/DicePanel';
 import { device, follow, play, PlayError } from './client';
 import { playerTokenInfo } from './tokenInfo';
+import { MiniBuilder } from '../minis/MiniBuilder';
 
 const CONDITIONS: ConditionName[] = ['Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
 
@@ -18,6 +19,8 @@ export function PlayerApp() {
   const [error, setError] = useState('');
   // Bumped after joining, so the live stream reconnects as this device.
   const [connection, setConnection] = useState(0);
+  const [miniOpen, setMiniOpen] = useState(false);
+  const [skipped, setSkipped] = useState(false);
 
   useEffect(() => {
     const joined = !!device.token;
@@ -87,7 +90,26 @@ export function PlayerApp() {
         </div>
       )}
       {screen.kind === 'join' && <Join view={screen.view} onJoin={join} />}
-      {screen.kind === 'play' && <Fight view={screen.view} act={act} />}
+      {screen.kind === 'play' &&
+        (miniOpen || needsMini(screen.view, skipped) ? (
+          <MiniStep
+            view={screen.view}
+            onSaved={(view) => {
+              // Back to the default figure counts as an answer: don't ask again.
+              rememberSkip(view);
+              setSkipped(!view.myMini);
+              setScreen({ kind: 'play', view });
+              setMiniOpen(false);
+            }}
+            onClose={() => {
+              rememberSkip(screen.view);
+              setSkipped(true);
+              setMiniOpen(false);
+            }}
+          />
+        ) : (
+          <Fight view={screen.view} act={act} onMini={() => setMiniOpen(true)} />
+        ))}
     </div>
   );
 }
@@ -116,9 +138,60 @@ function Join({ view, onJoin }: { view: PlayerView; onJoin: (id: string | null) 
   );
 }
 
+/** My character's name, once this device has picked one. */
+const myName = (view: PlayerView) => view.party.find((p) => p.id === view.me)?.name ?? null;
+const skipKey = (name: string) => `mini-skipped:${name.toLowerCase()}`;
+
+/** Ask for a mini once: when my character has none and I haven't said "later" on this device. */
+function needsMini(view: PlayerView, skippedNow: boolean): boolean {
+  const name = myName(view);
+  if (!name || view.myMini || skippedNow) return false;
+  try {
+    return !localStorage.getItem(skipKey(name));
+  } catch {
+    return true;
+  }
+}
+
+function rememberSkip(view: PlayerView) {
+  const name = myName(view);
+  try {
+    if (name && !view.myMini) localStorage.setItem(skipKey(name), '1');
+  } catch {
+    /* private mode: asks again next time */
+  }
+}
+
+/** My character's paper mini: pick a ready-made one or build one. It's kept for every encounter. */
+function MiniStep({ view, onSaved, onClose }: { view: PlayerView; onSaved: (view: PlayerView) => void; onClose: () => void }) {
+  const name = myName(view) ?? 'Your character';
+  return (
+    <div className="stack">
+      <div>
+        <p className="muted small play-kicker">{view.title}</p>
+        <h1>{name}'s mini</h1>
+        <p className="muted">
+          {view.myMini ? 'Change how you stand on the map.' : 'How you stand on the 3D map: pick a ready-made figure and change what you like, or build your own.'} It's saved to {name} for every
+          encounter.
+        </p>
+      </div>
+      <MiniBuilder
+        name={name}
+        value={view.myMini}
+        onSave={async (mini) => {
+          onSaved(await play.saveMini(mini));
+        }}
+      />
+      <button type="button" className="link" onClick={onClose}>
+        {view.myMini ? 'Back to the fight' : 'Not now'}
+      </button>
+    </div>
+  );
+}
+
 const HEALTH_LABEL = { healthy: 'Healthy', bloodied: 'Bloodied', down: 'Down' } as const;
 
-function Fight({ view, act }: { view: PlayerView; act: (r: Parameters<typeof play.act>[0]) => Promise<void> }) {
+function Fight({ view, act, onMini }: { view: PlayerView; act: (r: Parameters<typeof play.act>[0]) => Promise<void>; onMini: () => void }) {
   const me = view.order.find((c) => c.id === view.me) ?? null;
   const myTurn = !!view.me && view.turn === view.me;
   const current = view.order.find((c) => c.current);
@@ -133,6 +206,11 @@ function Fight({ view, act }: { view: PlayerView; act: (r: Parameters<typeof pla
       <div>
         <p className="muted small play-kicker">{view.status === 'running' ? `Round ${view.round}` : view.status === 'exploring' ? 'Exploring' : 'Getting ready'}</p>
         <h1>{view.title}</h1>
+        {view.me && (
+          <button type="button" className="link" onClick={onMini}>
+            {view.myMini ? 'My mini' : 'Make my mini'}
+          </button>
+        )}
       </div>
       {myTurn ? (
         <div className="your-turn" role="status">

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { cellsOf, onBoard, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken } from '../../../src/shared/battlemap';
 import { roomCells } from '../../../src/shared/mapSight';
-import type { ArtPlan } from '../../../src/shared/types';
+import type { ArtPlan, MiniSpec } from '../../../src/shared/types';
 import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintTerrain, palette, type Overlay, type Palette } from './paint';
 import { moveGuide } from './moveGuide';
 import './map.css';
@@ -26,6 +26,8 @@ export interface TokenInfo {
   speed?: number | null;
   /** Two foes on opposite sides of it (the optional flanking rule). */
   flanked?: boolean;
+  /** Its paper mini for the 3D standee (without one, it gets one from its name). */
+  mini?: MiniSpec;
 }
 
 /** What both map views (2D and 3D) take. */

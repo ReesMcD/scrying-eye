@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { createApi, pollServiceFor, wikiDungeonsFor, wikiEncountersFor } from './api.js';
+import { createApi, miniStoreFor, pollServiceFor, wikiDungeonsFor, wikiEncountersFor } from './api.js';
 import { publicJoinUrl } from './encounterRoutes.js';
 import type { PasswordSource } from './auth.js';
 import { networkGuard } from './network.js';
@@ -79,6 +79,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   const encounters = new EncounterStore(opts.dataDir, undefined, log);
   const wikiEncounters = wikiEncountersFor(opts.dataDir, configStore);
+  const minis = miniStoreFor(opts.dataDir, configStore, log);
   const mapArt = new MapArt(() => configStore.read().config?.battle_maps.assets_dir);
   opts.bot?.attachEncounters({
     store: encounters,
@@ -122,6 +123,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       wikiDungeons,
       mapArt,
       polls,
+      minis,
       ...(opts.bot ? { bot: opts.bot } : {}),
       ...(opts.music ? { music: opts.music } : {}),
       ...(opts.corsOrigins ? { corsOrigins: opts.corsOrigins } : {}),
@@ -150,7 +152,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const players =
     opts.players === false
       ? Promise.resolve(null)
-      : startPlayerServer(encounters, { port: playerPort, webDist, art: mapArt }).catch((err: Error) => {
+      : startPlayerServer(encounters, { port: playerPort, webDist, art: mapArt, minis }).catch((err: Error) => {
           log(`The players' page couldn't start on port ${playerPort}: ${err.message}. Change players.port in Settings.`);
           return null;
         });

@@ -1,7 +1,8 @@
-import type { Combatant, EncounterAction, EncounterState, Health, PlayerCombatant, PlayerRequest, PlayerView } from '../shared/types.js';
+import type { Combatant, EncounterAction, EncounterState, Health, MiniSpec, PlayerCombatant, PlayerRequest, PlayerView } from '../shared/types.js';
 import { CONDITIONS, EncounterError } from '../encounter/rules.js';
 import { playersMap } from '../shared/battlemap.js';
 import { clipToRevealed } from '../shared/mapSight.js';
+import { miniForCreature } from '../shared/minis/index.js';
 
 /** How hurt a monster looks: down at 0, bloodied at half or less (the usual table call). */
 export function healthOf(c: Combatant): Health | null {
@@ -16,15 +17,17 @@ const PLAYER_ROLLS = 12;
 /**
  * One player's view of the encounter. Leaves out hidden combatants entirely, monsters' and NPCs'
  * numbers (only how hurt they look), initiative values, stat blocks, DM notes and the log. The
- * map leaves out hidden tokens and the DM's notes.
+ * map leaves out hidden tokens and the DM's notes. `miniFor` finds a token's paper mini by name
+ * (one made on the Minis page); the rest get one from their name and stat block.
  */
-export function playerView(s: EncounterState, me: string | null): PlayerView {
+export function playerView(s: EncounterState, me: string | null, miniFor: (name: string) => MiniSpec | null = () => null): PlayerView {
   const visible = (c: Combatant | undefined): c is Combatant => !!c && !c.hidden;
   const byId = new Map(s.combatants.map((c) => [c.id, c]));
   const order = s.order.map((id) => byId.get(id)).filter(visible);
   const pc = (c: Combatant) => c.kind === 'pc';
   const mine = me ? byId.get(me) : undefined;
   const taken = new Set((s.join?.players ?? []).map((p) => p.combatantId).filter(Boolean));
+  const map = s.map ? clipped(s) : null;
   return {
     title: s.title,
     status: s.status,
@@ -49,13 +52,20 @@ export function playerView(s: EncounterState, me: string | null): PlayerView {
     party: s.combatants.filter(pc).map((c) => ({ id: c.id, name: c.name, taken: taken.has(c.id) })),
     myInitiative: mine?.initiative ?? null,
     myAc: mine?.ac ?? null,
-    map: s.map ? clipped(s) : null,
+    myMini: mine?.kind === 'pc' ? miniFor(mine.name) : null,
+    map,
     tokens: Object.fromEntries(order.filter((c) => c.tokenId).map((c) => [c.id, c.tokenId!])),
     fog: s.map && s.fog ? s.fog.revealed : null,
     // An area under the fog would give away what's there: players see only those they could see.
     templates: (s.templates ?? []).filter((t) => !s.fog || s.fog.revealed.includes(`${Math.min(t.at[0], (s.map?.width ?? 1) - 1)},${Math.min(t.at[1], (s.map?.height ?? 1) - 1)}`)),
     rolls: (s.rolls ?? []).filter((r) => !r.secret).slice(-PLAYER_ROLLS),
     moved: Object.fromEntries(order.flatMap((c) => (c.tokenId && s.moved?.[c.tokenId] ? [[c.tokenId, s.moved[c.tokenId]!.feet]] : []))),
+    minis: Object.fromEntries(
+      (map?.tokens ?? []).map((t) => {
+        const ref = s.combatants.find((c) => c.tokenId === t.id)?.ref;
+        return [t.id, miniFor(t.name) ?? miniForCreature({ name: t.name, type: ref ? s.statBlocks[ref]?.type : undefined })];
+      }),
+    ),
   };
 }
 

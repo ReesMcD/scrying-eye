@@ -3,6 +3,7 @@
  * (web/src/types.ts) imports these same definitions instead of keeping copies.
  */
 import type { BattleMap, Cell } from './battlemap.js';
+import type { MiniSpec } from './minis/spec.js';
 import type { AreaTemplate } from './mapSight.js';
 import type { Config } from '../config/schema.js';
 
@@ -814,6 +815,8 @@ export interface PlayerView {
   myInitiative: number | null;
   /** My AC (only mine). */
   myAc: number | null;
+  /** My character's paper mini, or null while they haven't made one (the page offers to). */
+  myMini: MiniSpec | null;
   /** The map without hidden tokens or DM notes, if the encounter has one. */
   map: BattleMap | null;
   /** Visible combatant id → its token on the map. */
@@ -825,6 +828,8 @@ export interface PlayerView {
   rolls: EncounterRoll[];
   /** During a fight: feet each visible token has moved since its turn started. */
   moved: Record<string, number>;
+  /** Visible token id → its paper mini (made on the Minis page, or picked from its name and stat block). */
+  minis: Record<string, MiniSpec>;
 }
 
 /** A spell area on the map: who placed it ("dm" or a combatant id). */
@@ -931,4 +936,29 @@ export interface PollsState {
   timeZone: string;
   channels: Array<{ id: string; name: string; guild: string }>;
   roles: Array<{ id: string; name: string; guild: string }>;
+}
+
+// --- Paper minis -----------------------------------------------------------------------------------
+
+export type { MiniSpec } from './minis/spec.js';
+
+export type MiniKind = 'pc' | 'npc' | 'monster';
+
+/** A figure on the Minis page: a party character (from the roster), an NPC or a monster. */
+export interface MiniFigure {
+  id: string;
+  name: string;
+  kind: MiniKind;
+  /** The character's campaign (party only). */
+  campaign: string | null;
+  /** Its mini, or null for the default figure. */
+  mini: MiniSpec | null;
+  /** A player link is on (party only). */
+  hasLink: boolean;
+}
+
+/** What a player's private link opens: their character's name and mini. */
+export interface PlayerMini {
+  name: string;
+  mini: MiniSpec | null;
 }

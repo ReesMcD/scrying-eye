@@ -66,6 +66,7 @@ run → Artifacts**, and you need to be signed in to GitHub to download it. Tagg
 | Discord slash commands (`/record`, `/stop`, `/status`) | In your server, while the app runs | Ready, awaiting a live test |
 | Scheduled Discord polls ("which day for the next session?") | Settings → Polls | Ready, awaiting a live test |
 | Dice (`/roll`, `/rr`) and 2024 rules lookups (`/spell`, `/monster`, `/item`, `/condition`, `/rule`) | In your server, while the app runs ([G](#g-dice-and-rules-in-discord)) | Ready, awaiting a live test |
+| Paper minis for the 3D map: build them for the party, NPCs and monsters; players build their own from a private link | The app's **Minis** page | Ready |
 | Auto-publishing (e.g. to GitHub) | none yet | Phase 3 |
 
 **Testing on a Mac with Claude Code?** Follow [TESTING.md](TESTING.md).
@@ -547,6 +548,16 @@ What's in it:
     - Like `/record`, `/encounter` is for people with **Manage Server** by default. Players only
       hear that a fight is over, never the DM's summary.
 
+- **Paper minis** (**Minis** page): every creature on the 3D map stands as a paper mini in one
+  house style ([docs/minis-style-guide.md](docs/minis-style-guide.md)).
+  - The party comes from **Campaigns**; add NPCs and monsters by name. A token finds its mini by
+    name ("Goblin 2" uses "Goblin"); one without a mini gets a figure from its name and stat block.
+  - **In an encounter:** after picking their character, a player without a mini is asked to pick a
+    ready-made one or build their own (or "Not now"); it's saved to that character for every
+    encounter. **My mini** changes it later. A character not in Campaigns is kept as its own.
+  - **Make a player link** gives a character's player a private page to build their own mini,
+    any time, through the same public address as the players' link. A new link turns the old one off.
+
 **Security:** the app controls a bot that records people, so it always needs the password, and it
 only answers this Mac and your Tailscale devices. Other devices on your Wi-Fi get "forbidden" (set
 `APP_ALLOW_LAN=1` in `.env` if you want them in). After 10 wrong passwords in a minute, that device
@@ -555,8 +566,8 @@ has to wait a minute. Don't expose port 4400 to the internet.
 **The players' link** is the one public part, on its own port (4410), and here is what it does
 and doesn't expose:
 - **The server:** it listens on this Mac only (127.0.0.1); Tailscale Funnel carries it to the
-  internet. It serves the player page, its files and a narrow API for the encounter running now,
-  and nothing else: no DM routes, no password, no other files.
+  internet. It serves the player page, its files, a narrow API for the encounter running now and
+  players' mini links, and nothing else: no DM routes, no password, no other files.
 - **The link:** it holds a 128-bit random code, so it can't be guessed. It stops working when the
   encounter ends or you make a new one. Each device gets its own token (only a hash is kept), and a
   token can change only its own PC.
@@ -567,6 +578,9 @@ and doesn't expose:
   referrer.
 - **What the link can do:** anyone who has it can watch the fight and join as a character nobody
   has claimed yet, so post it only where your players are. If it leaks, press **New link**.
+- **Mini links:** a character's mini link opens that one character's mini, and nothing else (no
+  encounter, no other character). It holds a 128-bit random code (only a hash is kept), and stops
+  working when you make a new one or turn it off.
 - **Stopping it:** to take it offline entirely, turn Funnel off (`tailscale funnel reset`).
 
 **Later on Vercel:** the pages can be hosted on Vercel, but the bot can't. It needs a
