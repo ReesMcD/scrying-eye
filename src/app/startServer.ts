@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { createApi, wikiEncountersFor } from './api.js';
+import { createApi, pollServiceFor, wikiEncountersFor } from './api.js';
 import { publicJoinUrl } from './encounterRoutes.js';
 import type { PasswordSource } from './auth.js';
 import { networkGuard } from './network.js';
@@ -99,6 +99,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     opts.bot.postEncounter({ title: `🎲 ${roll.who}${roll.label ? `: ${roll.label}` : ''}`, description: roll.text }).catch((err: Error) => log(`Couldn't post a roll to Discord: ${err.message}`));
   });
 
+  // Scheduled Discord polls (#43): checked every minute; a poll missed while the app was off posts once, late.
+  const polls = pollServiceFor(opts.dataDir, configStore, opts.bot, log);
+  if (opts.bot) polls.start();
+
   const app = new Hono();
   app.use('*', networkGuard(opts.allowLan ?? false));
   app.route(
@@ -111,6 +115,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       encounters,
       wikiEncounters,
       mapArt,
+      polls,
       ...(opts.bot ? { bot: opts.bot } : {}),
       ...(opts.music ? { music: opts.music } : {}),
       ...(opts.corsOrigins ? { corsOrigins: opts.corsOrigins } : {}),
@@ -158,6 +163,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
             playerPort: playerServer?.port ?? null,
             close: async () => {
               clearInterval(pruneTimer);
+              polls.stop();
               await playerServer?.close();
               await new Promise<void>((r) => server.close(() => r()));
             },

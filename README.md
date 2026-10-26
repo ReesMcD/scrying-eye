@@ -64,6 +64,7 @@ run → Artifacts**, and you need to be signed in to GitHub to download it. Tagg
 | Import a [Craig](https://craig.chat) recording | `npm run import:craig` | Ready |
 | Web app on your phone | Tailscale → `http://<Mac name>:4400` | Ready |
 | Discord slash commands (`/record`, `/stop`, `/status`) | In your server, while the app runs | Ready, awaiting a live test |
+| Scheduled Discord polls ("which day for the next session?") | Settings → Polls | Ready, awaiting a live test |
 | Dice (`/roll`, `/rr`) and 2024 rules lookups (`/spell`, `/monster`, `/item`, `/condition`, `/rule`) | In your server, while the app runs ([G](#g-dice-and-rules-in-discord)) | Ready, awaiting a live test |
 | Auto-publishing (e.g. to GitHub) | none yet | Phase 3 |
 
@@ -116,7 +117,7 @@ You only need the keys for the steps you'll use.
 3. The bot needs no privileged intents. Leave **Presence**, **Server Members** and **Message Content** off.
 4. Open **OAuth2 → URL Generator**:
    - **Scopes:** `bot` and `applications.commands` (for the slash commands)
-   - **Bot permissions:** **View Channels**, **Connect**, **Speak** (to play music), **Send Messages**, **Attach Files**, **Embed Links** (the encounter's join post)
+   - **Bot permissions:** **View Channels**, **Connect**, **Speak** (to play music), **Send Messages**, **Attach Files**, **Embed Links** (the encounter's join post), **Send Polls** (scheduled polls)
 
    Added the bot before slash commands existed? The app's Record page shows a **Re-add the bot**
    link with all of this filled in. Adding it again keeps everything.
@@ -368,6 +369,12 @@ like "Yeah" are often guesses; that's expected and rarely matters for the recap.
 speaker are unaffected. Their lines are joined into turns as usual, while a shared mic's lines are
 kept separate so each one can be labelled.
 
+**Just for one session:** if a session was different (Sam was on his own phone today, or joined
+Rees's mic partway), open the session and use **Who's on each mic**. Pick who was on each
+account from the start, and add a switch at a time from the transcript ("from 1:10:00, Rees and
+Sam"). Saving rebuilds the transcript; then press **Label speakers** or **Rewrite recap**. Only
+the shared stretch is sent to Claude, and the settings stay as they are.
+
 ### F. The web app
 
 A small web app to browse sessions, read and edit recaps, run each step, and change every
@@ -547,6 +554,21 @@ the Coast LLC, available at <https://www.dndbeyond.com/srd>, licensed under
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode). Structured data via
 [Open5e](https://open5e.com). The condition summaries are our own.
 
+### H. Scheduled polls
+
+**Settings → Polls** sets up a Discord poll that the bot posts on a day and time you pick, e.g.
+every Monday at 10:00: "Which day for the next session?".
+- **Answers:** typed ones, or the coming days ("Fri 24 Oct"), optionally only some weekdays (up
+  to 10, Discord's limit).
+- **Open for** 1 hour to a week; one answer each or several.
+- **When it closes** the app shows the votes and who voted for what, and can post the winner,
+  mentioning a role.
+- **Post now** posts one straight away, from your phone too.
+- Times are in `transcript.timezone`. A poll due while the app was off posts once when it starts,
+  saying it's late.
+- The bot needs Discord's **Send Polls** permission: the Record page asks you to re-add the bot
+  if it's missing.
+
 ### What's in a session folder
 
 ```
@@ -561,6 +583,7 @@ data/sessions/<session-id>/
   transcripts/<userId>.json  per-speaker transcription with exact times
   segments.json             merged transcript, machine-readable
   rolls.jsonl               public /rolls during the recording (go into the transcript)
+  (session.json `tracks`)   who was on each mic, when it differed from Settings → Speakers
   summary/meta.json         model, prompt versions, token usage of the last recap
   summary/audit/            what the clean-up and completeness checks changed
   summary/generated.md, summary/edited-*.md   the generated recap / your edits, kept when replaced

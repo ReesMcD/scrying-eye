@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
+import { join } from 'node:path';
 import { requirePassword, SignInLimiter, type PasswordSource } from './auth.js';
 import { ConfigStore } from './configStore.js';
 import { JobRunner, type Job, type JobStep } from './jobs.js';
@@ -21,6 +22,8 @@ import { encounterRoutes } from './encounterRoutes.js';
 import { EncounterStore } from '../encounter/store.js';
 import { WikiEncounters } from '../encounter/wiki.js';
 import { ClaudeTurnAdvisor, type TurnAdvisor } from '../encounter/assistant.js';
+import { PollService } from '../polls/PollService.js';
+import { pollRoutes } from './pollRoutes.js';
 import type { DndBeyondCharacter, EncounterState, JobUpdate } from '../shared/types.js';
 import { DndBeyondError, lookupCharacter } from '../dndbeyond/characters.js';
 import { artImage, MapArt } from '../battlemap/library.js';
@@ -52,6 +55,16 @@ export interface ApiOptions {
   wikiEncounters?: WikiEncounters;
   /** Battle map art from the folder in the settings (default: one reading the settings). */
   mapArt?: MapArt;
+  /** Scheduled Discord polls (default: kept in dataDir, posting through `bot`). */
+  polls?: PollService;
+}
+
+/** Polls go by the transcript's time zone, else this machine's. */
+export const pollTimeZone = (configStore: ConfigStore) => configStore.read().config?.transcript.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Scheduled polls kept in the data folder, posted through the bot when it's connected. */
+export function pollServiceFor(dataDir: string, configStore: ConfigStore, bot: BotControl | undefined, log?: (msg: string) => void): PollService {
+  return new PollService(join(dataDir, 'polls.json'), { poster: () => bot?.pollPoster?.() ?? null, timeZone: () => pollTimeZone(configStore), ...(log ? { log } : {}) });
 }
 
 /** The wiki's encounters, from the same address and key as recap uploads. */
@@ -281,6 +294,7 @@ export function createApi(opts: ApiOptions): Hono {
   });
 
   api.route('/music', musicRoutes(opts.music, new MusicLibrary(opts.dataDir)));
+  api.route('/', pollRoutes(opts.polls ?? pollServiceFor(opts.dataDir, opts.configStore, opts.bot), { timeZone: () => pollTimeZone(opts.configStore), targets: () => opts.bot?.pollTargets?.() ?? { channels: [], roles: [] } }));
   api.route(
     '/',
     encounterRoutes(
