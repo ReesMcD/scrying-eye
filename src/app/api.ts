@@ -28,6 +28,8 @@ import { pollRoutes } from './pollRoutes.js';
 import type { DndBeyondCharacter, EncounterState, JobUpdate } from '../shared/types.js';
 import { DndBeyondError, lookupCharacter } from '../dndbeyond/characters.js';
 import { artImage, MapArt } from '../battlemap/library.js';
+import { miniRoutes } from './miniRoutes.js';
+import { MiniStore } from '../minis/store.js';
 
 export interface ApiOptions {
   password: PasswordSource;
@@ -60,6 +62,8 @@ export interface ApiOptions {
   mapArt?: MapArt;
   /** Scheduled Discord polls (default: kept in dataDir, posting through `bot`). */
   polls?: PollService;
+  /** The table's paper minis (made here when not given). */
+  minis?: MiniStore;
 }
 
 /** Polls go by the transcript's time zone, else this machine's. */
@@ -301,6 +305,10 @@ export function createApi(opts: ApiOptions): Hono {
     }
   });
 
+  api.route(
+    '/',
+    miniRoutes(opts.minis ?? miniStoreFor(opts.dataDir, opts.configStore), () => configSchema.parse(opts.configStore.read().config ?? {}).players.public_url),
+  );
   api.route('/music', musicRoutes(opts.music, new MusicLibrary(opts.dataDir)));
   api.route('/', pollRoutes(opts.polls ?? pollServiceFor(opts.dataDir, opts.configStore, opts.bot), { timeZone: () => pollTimeZone(opts.configStore), targets: () => opts.bot?.pollTargets?.() ?? { channels: [], roles: [] } }));
   api.route(
@@ -386,4 +394,13 @@ function readUnpairedAction(body: unknown): UnpairedAction | undefined {
   if (b.action === 'link' && text(b.speaker)) return { action: 'link', speaker: text(b.speaker)! };
   if (b.action === 'new' && text(b.name)) return { action: 'new', name: text(b.name)!, ...(text(b.character) ? { character: text(b.character)! } : {}) };
   return undefined;
+}
+
+/** The minis, with the party from the roster (Settings → Campaigns). */
+export function miniStoreFor(dataDir: string, configStore: ConfigStore, log?: (msg: string) => void): MiniStore {
+  return new MiniStore(
+    dataDir,
+    () => Object.entries(configStore.read().config?.characters ?? {}).map(([id, ch]) => ({ id, name: ch.name, campaign: ch.campaign })),
+    log,
+  );
 }

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { onBoard, SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
 import { moveGuide } from './moveGuide';
-import { leanFor, paintedFigure } from './standee';
+import { leanFor, miniCard } from './standee';
+import { miniForCreature } from '../../../src/shared/minis';
 import { buildScene, cellAt, figureOf, sceneKey, type BoxPart, type MapScene } from '../../../src/shared/mapScene';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
@@ -544,7 +545,7 @@ export class MapEngine3d {
     for (const t of map.tokens) {
       seen.add(t.id);
       const ti = info[t.id];
-      const shape = `${t.size}|${t.kind}|${!!ti?.hidden}|${t.name}`;
+      const shape = `${t.size}|${t.kind}|${!!ti?.hidden}|${t.name}|${JSON.stringify(ti?.mini ?? null)}`;
       let fig = this.figures.get(t.id);
       if (fig && fig.shape !== shape) {
         this.world.remove(fig.group);
@@ -586,16 +587,25 @@ export class MapEngine3d {
     base.position.y = 0.04;
     const clip = new THREE.Mesh(new THREE.BoxGeometry(f.radius * 0.9, 0.08, 0.06), new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.5 }));
     clip.position.y = 0.11;
-    // The card: a painted figure cut out of paper, its foot in the clip.
-    const art = paintedFigure(t);
-    const texture = new THREE.CanvasTexture(art);
+    // The card: the creature's paper mini, its foot in the clip.
+    const mini = miniCard(ti?.mini ?? miniForCreature({ name: t.name }));
+    const texture = new THREE.CanvasTexture(mini.canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 4;
-    const height = f.height * 1.25;
-    const width = (height * art.width) / art.height;
+    const height = f.height * 1.25 * mini.scale;
+    const width = (height * mini.canvas.width) / mini.canvas.height;
     const card = new THREE.Mesh(
       new THREE.PlaneGeometry(width, height).translate(0, height / 2, 0),
       new THREE.MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.9, side: THREE.DoubleSide, transparent: faded, opacity: faded ? 0.45 : 1 }),
+    );
+    mini.ready.then(
+      () => {
+        // Still on the table (not replaced while the picture decoded).
+        if (this.figures.get(t.id)?.card !== card) return;
+        texture.needsUpdate = true;
+        this.render();
+      },
+      () => undefined,
     );
     card.rotation.order = 'YXZ';
     card.position.y = 0.08;

@@ -11,6 +11,8 @@ import { EncounterError } from '../encounter/rules.js';
 import type { EncounterStore } from '../encounter/store.js';
 import type { EncounterState, PlayerRequest } from '../shared/types.js';
 import { artImage, type MapArt } from '../battlemap/library.js';
+import { MiniStoreError, type MiniStore } from '../minis/store.js';
+import { MiniError, type MiniSpec } from '../shared/minis/index.js';
 import { playerView } from './view.js';
 
 /**
@@ -25,6 +27,9 @@ import { playerView } from './view.js';
  *   POST /p/:code/act             a PlayerRequest on your own PC (or moving any PC)
  *   GET  /p/:code/art             the map's pictures (from the DM's art folder), if any
  *   GET  /p/:code/art/:id         one of those pictures, and only those
+ *   GET  /mini/:token             a player's page for their character's paper mini
+ *   GET  /m/:token                that character's name and mini
+ *   PUT  /m/:token                { mini }: saves it (the link opens that one character, nothing else)
  *
  * Devices send their token as `Authorization: Bearer <token>`.
  */
@@ -77,11 +82,13 @@ const bearer = (c: Context) => {
   return h.startsWith('Bearer ') ? h.slice(7).trim() : '';
 };
 
-export function playerApp(store: EncounterStore, opts: { webDist: string; limiter?: RateLimiter; art?: MapArt }): Hono {
+export function playerApp(store: EncounterStore, opts: { webDist: string; limiter?: RateLimiter; art?: MapArt; minis?: MiniStore }): Hono {
   const app = new Hono();
   const limiter = opts.limiter ?? new RateLimiter();
   const webDist = resolve(opts.webDist);
   const gone = (c: Context) => c.json({ error: 'This encounter has ended, or the DM made a new link.' }, 410);
+  const miniFor = (name: string): MiniSpec | null => opts.minis?.forName(name) ?? null;
+  const view = (state: EncounterState, me: string | null) => playerView(state, me, miniFor);
 
   app.use('*', securityHeaders);
   app.use('*', async (c, next) => {
@@ -91,7 +98,9 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
     }
     await next();
   });
-  app.use('/p/*', bodyLimit({ maxSize: 4 * 1024, onError: (c) => c.json({ error: 'Too large' }, 413) }));
+  const small = bodyLimit({ maxSize: 4 * 1024, onError: (c) => c.json({ error: 'Too large' }, 413) });
+  app.use('/p/*', small);
+  app.use('/m/*', small);
 
   app.get('/health', (c) => c.json({ ok: true }));
 
@@ -107,7 +116,7 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
 
   app.get('/p/:code/view', (c) => {
     const v = viewFor(c, c.req.param('code'));
-    return v instanceof Response ? v : c.json(playerView(v.state, v.me));
+    return v instanceof Response ? v : c.json(view(v.state, v.me));
   });
 
   app.get('/p/:code/events', (c) => {
@@ -127,14 +136,17 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
         if (!store.isOpen(code)) return finish();
         const me = token ? store.player(code, token)?.player.combatantId : null;
         if (me === undefined) return finish();
-        void stream.writeSSE({ event: 'view', data: JSON.stringify(playerView(store.current()!, me)) });
+        void stream.writeSSE({ event: 'view', data: JSON.stringify(view(store.current()!, me)) });
       };
       store.on('encounter', send);
+      // A mini changed: standees on the map redraw.
+      opts.minis?.on('change', send);
       send();
       const ping = setInterval(() => void stream.writeSSE({ event: 'ping', data: '' }), 25_000);
       await new Promise<void>((r) => stream.onAbort(r));
       clearInterval(ping);
       store.off('encounter', send);
+      opts.minis?.off('change', send);
     });
   });
 
@@ -156,7 +168,7 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
     const combatantId = typeof body?.combatantId === 'string' ? body.combatantId : null;
     try {
       const { token, state } = store.join(code, combatantId);
-      return c.json({ token, view: playerView(state, combatantId) });
+      return c.json({ token, view: view(state, combatantId) });
     } catch (err) {
       if (err instanceof EncounterError) return c.json({ error: err.message }, 409);
       throw err;
@@ -172,9 +184,29 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
     const request = (await c.req.json().catch(() => null)) as PlayerRequest | null;
     if (!request || typeof request !== 'object') return c.json({ error: 'Bad request' }, 400);
     try {
-      return c.json(playerView(store.playerAct(code, token, request), found.player.combatantId));
+      return c.json(view(store.playerAct(code, token, request), found.player.combatantId));
     } catch (err) {
       if (err instanceof EncounterError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
+
+  // A player's link to their character's mini.
+  const linkGone = (c: Context) => c.json({ error: 'This link was turned off: ask the DM for a new one.' }, 410);
+  app.get('/m/:token', (c) => {
+    const figure = opts.minis?.byLink(c.req.param('token'));
+    return figure ? c.json({ name: figure.name, mini: figure.mini }) : linkGone(c);
+  });
+  app.put('/m/:token', async (c) => {
+    const figure = opts.minis?.byLink(c.req.param('token'));
+    if (!figure) return linkGone(c);
+    const body = (await c.req.json().catch(() => null)) as { mini?: unknown } | null;
+    if (!body || !('mini' in body)) return c.json({ error: 'Bad request' }, 400);
+    try {
+      const saved = opts.minis!.setMini(figure.id, body.mini);
+      return c.json({ name: saved.name, mini: saved.mini });
+    } catch (err) {
+      if (err instanceof MiniError || err instanceof MiniStoreError) return c.json({ error: err.message }, 400);
       throw err;
     }
   });
@@ -182,6 +214,7 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
   // The page and its own files. Unknown codes get the page too; it says the link has expired.
   if (existsSync(resolve(webDist, 'play.html'))) {
     app.get('/play/:code', serveStatic({ root: webDist, path: 'play.html' }));
+    app.get('/mini/:token', serveStatic({ root: webDist, path: 'mini.html' }));
     app.use('/assets/*', async (c, next) => {
       await next();
       if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable');
@@ -193,8 +226,8 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
 }
 
 /** Starts the player server on 127.0.0.1:<port>. */
-export function startPlayerServer(store: EncounterStore, opts: { port: number; webDist: string; art?: MapArt }): Promise<{ port: number; close(): Promise<void> }> {
-  const app = playerApp(store, { webDist: opts.webDist, ...(opts.art ? { art: opts.art } : {}) });
+export function startPlayerServer(store: EncounterStore, opts: { port: number; webDist: string; art?: MapArt; minis?: MiniStore }): Promise<{ port: number; close(): Promise<void> }> {
+  const app = playerApp(store, { webDist: opts.webDist, ...(opts.art ? { art: opts.art } : {}), ...(opts.minis ? { minis: opts.minis } : {}) });
   return new Promise((resolvePromise, reject) => {
     let server: ServerType;
     try {

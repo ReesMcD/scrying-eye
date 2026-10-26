@@ -7,6 +7,7 @@ import { flankedTokens, flankPieces } from '../../../../src/shared/tableAids';
 import type { TokenInfo } from '../../map/BattleMapView';
 import { MapView } from '../../map/MapView';
 import { useArtPlan } from '../../map/useArtPlan';
+import { useMiniFor } from '../../minis/useMinis';
 import type { ArtPlan, EncounterAction, EncounterState } from '../../types';
 import { Segmented } from '../../ui';
 
@@ -59,6 +60,7 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
     onClear: (id) => void act({ type: 'clearTemplate', id }),
   });
   const revealed = new Set(state.fog?.revealed ?? []);
+  const miniFor = useMiniFor();
 
   const byToken = new Map(state.combatants.filter((c) => c.tokenId).map((c) => [c.tokenId!, c]));
   const fighting = state.status === 'running';
@@ -66,8 +68,10 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
   const info: Record<string, TokenInfo> = {};
   for (const t of map.tokens) {
     const c = byToken.get(t.id);
-    const walk = c?.ref ? state.statBlocks[c.ref]?.speed?.walk : undefined;
+    const block = c?.ref ? state.statBlocks[c.ref] : undefined;
+    const walk = block?.speed?.walk;
     info[t.id] = {
+      mini: miniFor(t.name, block?.type),
       ...(c ? { name: c.name, current: c.id === state.turn, hp: c.hp, maxHp: c.maxHp, hidden: c.hidden, speed: c.speed ?? (typeof walk === 'number' ? walk : null) } : { name: t.name, hidden: !!t.hidden }),
       ...(fighting ? { moved: state.moved?.[t.id]?.feet ?? 0, flanked: flanked.has(t.id) } : {}),
     };
