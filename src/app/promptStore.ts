@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { join, resolve } from 'node:path';
 import { loadTemplate, render, type PromptName } from '../summary/prompts.js';
 import type { PromptInfo } from '../shared/types.js';
@@ -47,7 +48,7 @@ export function checkTemplate(name: PromptName, text: string): string | undefine
 
 export function writePrompt(promptsDir: string, name: PromptName, text: string): void {
   mkdirSync(resolve(promptsDir), { recursive: true });
-  writeFileSync(join(resolve(promptsDir), `${name}.md`), text.endsWith('\n') ? text : `${text}\n`);
+  writeFileAtomic(join(resolve(promptsDir), `${name}.md`), text.endsWith('\n') ? text : `${text}\n`);
 }
 
 export function deletePrompt(promptsDir: string, name: PromptName): void {

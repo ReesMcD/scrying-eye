@@ -17,6 +17,8 @@ export function LiveTranscript({ sessionId }: { sessionId: string }) {
     api<LiveSnapshot>('/bot/live').then(setLive, () => {});
     // Events carry only new lines; the first load (above) has everything before them.
     return subscribe({
+      // Lines spoken while the phone slept never arrive as events: fetch them all again.
+      onReconnect: () => void api<LiveSnapshot>('/bot/live').then(setLive, () => {}),
       onLive: (u) =>
         u.sessionId === sessionId &&
         setLive((prev) => (prev?.sessionId === sessionId ? { sessionId, lines: [...prev.lines, ...u.added].sort((a, b) => a.startMs - b.startMs), ...(u.error ? { error: u.error } : {}) } : prev)),

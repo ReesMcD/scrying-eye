@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { join } from 'node:path';
 import type { Config } from '../config/schema.js';
 import { paths, readJson, writeJson, type SessionInfo } from '../session/layout.js';
@@ -110,7 +110,7 @@ export async function summarizeSession(sessionDir: string, config: Config, confi
     for (const m of cleanup.modelsUsed) used.add(m);
     promptVersions.cleanup = cleanup.promptVersion;
     writeJson(paths.cleanSegments(sessionDir), { session, lines, stats: cleanup.stats });
-    writeFileSync(paths.cleanTranscript(sessionDir), renderMarkdown(session, lines, config.transcript.timezone));
+    writeFileAtomic(paths.cleanTranscript(sessionDir), renderMarkdown(session, lines, config.transcript.timezone));
     if (cleanup.audit) writeJson(summaryPaths.cleanupAudit(sessionDir), cleanup.audit satisfies CleanupAuditReport);
     log(`  Cleaned up: ${cleanup.stats.edited} lines corrected, ${cleanup.stats.dropped} filler lines dropped`);
     if (!lines.length) throw new Error('The clean-up dropped every line; turn off summary.cleanup and try again');

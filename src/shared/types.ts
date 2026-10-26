@@ -263,6 +263,8 @@ export interface BotStatus {
    */
   commands?: 'ready' | 'needs-invite';
   inviteUrl?: string;
+  /** Permissions the bot's role lacks in a server (e.g. Speak, which music needs). */
+  missingPermissions?: string[];
 }
 
 export interface VoiceChannelInfo {

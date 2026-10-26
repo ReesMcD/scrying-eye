@@ -1,4 +1,5 @@
-import { readdirSync, existsSync, writeFileSync } from 'node:fs';
+import { readdirSync, existsSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { join } from 'node:path';
 import { campaignFor, charactersByAccount, sharedAccounts, speakerNames } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
@@ -151,6 +152,6 @@ export function mergeSession(sessionDir: string, config: Config): MergeResult {
   });
   writeJson(paths.segments(sessionDir), { session, lines });
   const file = paths.transcript(sessionDir);
-  writeFileSync(file, renderMarkdown(session, lines, config.transcript.timezone));
+  writeFileAtomic(file, renderMarkdown(session, lines, config.transcript.timezone));
   return { lines: lines.length, speakers: new Set(lines.map((l) => l.userId)).size, file };
 }

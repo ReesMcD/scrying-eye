@@ -32,7 +32,7 @@ transcription and recap steps, and the web app.
 5. **On your phone:** open the app's **Settings → Keys & phone** tab for the steps. They use
    Tailscale, and your phone signs in with the password shown there.
 
-Your recordings, transcripts, recaps and settings are in `~/Library/Application Support/Session Bot/` (the app was called Session Bot before 0.4.1; updating renames the app and keeps everything).
+Your recordings, transcripts, recaps and settings are in `~/Library/Application Support/Scrying Eye/`, or `…/discord-session-bot/` if you've used the app since before 0.4.1 (**Settings → Keys & phone** shows the folder). Versions 0.4.1 to 0.6.0 looked in `…/Session Bot/` by mistake; 0.6.1 goes back to your original folder and moves anything recorded in between into it.
 **Updates (0.4 and later):** when a new version is out, the menu shows **Install Update (x.y.z)…**.
 - **One click:** it downloads the update, checks it against the checksum GitHub publishes,
   installs it and restarts, in about a minute. Your data stays.

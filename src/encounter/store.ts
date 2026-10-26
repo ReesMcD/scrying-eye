@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeJson } from '../session/layout.js';
 import type { EncounterAction, EncounterOutcome, EncounterState, JoinedPlayer, PlayerRequest } from '../shared/types.js';
 import { playerAction } from '../play/view.js';
 import { applyAction, EncounterError, newEncounter, outcomeOf, type RuleDeps } from './rules.js';
@@ -11,12 +12,6 @@ const secret = () => randomBytes(16).toString('base64url');
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 const sameSecret = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** Writes JSON so a crash mid-write never leaves a half file (#38). */
-function writeJsonAtomic(path: string, value: unknown) {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(`${path}.tmp`, JSON.stringify(value, null, 2) + '\n');
-  renameSync(`${path}.tmp`, path);
-}
 
 /**
  * The encounter being run, one at a time, kept in <data>/encounters/current.json so it survives
@@ -56,7 +51,7 @@ export class EncounterStore extends EventEmitter {
 
   private save(next: EncounterState | null) {
     this.state = next;
-    if (next) writeJsonAtomic(this.file, next);
+    if (next) writeJson(this.file, next);
     else rmSync(this.file, { force: true });
     this.emit('encounter', next);
   }
@@ -138,7 +133,7 @@ export class EncounterStore extends EventEmitter {
     const endedAt = this.deps.now();
     const outcome = outcomeOf(this.state, endedAt);
     const ended: EncounterState = { ...this.state, status: 'ended', endedAt, log: [...this.state.log, { at: endedAt, round: this.state.round, text: 'Encounter ended' }] };
-    writeJsonAtomic(join(this.dataDir, 'encounters', 'history', `${ended.id}.json`), { state: ended, outcome });
+    writeJson(join(this.dataDir, 'encounters', 'history', `${ended.id}.json`), { state: ended, outcome });
     this.save(null);
     this.emit('ended', outcome);
     return outcome;

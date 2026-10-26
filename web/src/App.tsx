@@ -94,7 +94,7 @@ function useBotStatus(): BotStatus | null {
   const [bot, setBot] = useState<BotStatus | null>(null);
   useEffect(() => {
     api<BotStatus>('/bot').then(setBot, () => {});
-    return subscribe({ onBot: setBot });
+    return subscribe({ onBot: setBot, onReconnect: () => void api<BotStatus>('/bot').then(setBot, () => {}) });
   }, []);
   return bot;
 }

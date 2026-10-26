@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "types": ["node"],
     "strict": true,
+    "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true

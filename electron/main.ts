@@ -1,6 +1,6 @@
 /**
  * Scrying Eye for macOS: a menu bar app that runs the Discord bot, the API and the web UI in one
- * process. Data lives in ~/Library/Application Support/Session Bot/ (its name before the rename).
+ * process. Data lives in ~/Library/Application Support/<name>/: see electron/storage.ts.
  */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, safeStorage, shell, Tray, type MenuItemConstructorOptions } from 'electron';
 import { spawn, spawnSync } from 'node:child_process';
@@ -15,6 +15,7 @@ import { startServer, type RunningServer } from '../src/app/startServer.js';
 import { listSessions } from '../src/app/sessions.js';
 import { PROMPT_NAMES } from '../src/app/promptStore.js';
 import { buildMenu, elapsed, type MenuAction, type MenuItem } from './menuModel.js';
+import { chooseStorage, mergeStorage } from './storage.js';
 import { APP_BUNDLE, bundlePath, checkForUpdate, downloadVerified, parseManifest, planUpdate, stageCommands, swapScript, updateTarget, type Release } from './updates.js';
 import { applyToEnv, generatePassword, SecretStore, type Cipher } from './secrets.js';
 
@@ -23,11 +24,19 @@ const PORT = Number(process.env.SESSION_BOT_PORT ?? 4400);
 const require = createRequire(import.meta.url);
 
 // --- Paths ------------------------------------------------------------------------------------
-// The app was called Session Bot. Electron names the Keychain entry that encrypts the saved keys
-// after the app, so it keeps that name inside, along with its data folder.
-const STORAGE_NAME = 'Session Bot';
-app.setName(STORAGE_NAME);
-app.setPath('userData', SMOKE ? mkdtempSync(join(tmpdir(), 'scrying-eye-smoke-')) : join(app.getPath('appData'), STORAGE_NAME));
+// The data folder and the app's name go together: see electron/storage.ts.
+const storage = chooseStorage(app.getPath('appData'));
+const mergeFrom = !SMOKE && storage.mergeFrom;
+app.setName(storage.name);
+app.setPath('userData', SMOKE ? mkdtempSync(join(tmpdir(), 'scrying-eye-smoke-')) : storage.dir);
+if (mergeFrom) {
+  try {
+    const moved = mergeStorage(mergeFrom, storage.dir);
+    console.log(`[scrying-eye] moved ${moved.length} item(s) from ${mergeFrom} into ${storage.dir}`);
+  } catch (err) {
+    console.log(`[scrying-eye] couldn't move ${mergeFrom} into ${storage.dir}: ${(err as Error).message}`);
+  }
+}
 const userData = app.getPath('userData');
 const dataDir = join(userData, 'data');
 const configPath = join(userData, 'config.yaml');

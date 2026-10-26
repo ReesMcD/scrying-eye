@@ -21,7 +21,13 @@ export function MusicPage() {
   useEffect(() => {
     api<MusicStatus>('/music').then(setStatus, (e: Error) => setError(e.message));
     api<MusicLibraryState>('/music/library').then(setLibrary, () => {});
-    return subscribe({ onMusic: setStatus });
+    return subscribe({
+      onMusic: setStatus,
+      onReconnect: () => {
+        api<MusicStatus>('/music').then(setStatus, () => {});
+        api<MusicLibraryState>('/music/library').then(setLibrary, () => {});
+      },
+    });
   }, []);
 
   const call = async (method: string, path: string, json?: object) => {

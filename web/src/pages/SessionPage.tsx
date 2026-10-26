@@ -43,7 +43,7 @@ export function SessionPage({ id }: { id: string }) {
         if (job.sessionId !== id) return;
         setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)].sort((a, b) => b.createdAt - a.createdAt));
         if (job.status === 'done' || job.status === 'failed') load();
-      }),
+      }, load),
     [id, load],
   );
 

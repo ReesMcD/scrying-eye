@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { join } from 'node:path';
 import { campaignFor, sharedAccounts, type SharedIdentity } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
@@ -155,6 +155,6 @@ export async function disambiguateSession(
   if (result.stats.labelled === 0) return { ...result, session: data.session };
   writeJson(paths.disambiguatedSegments(sessionDir), { session: data.session, lines: result.lines, stats: result.stats, promptVersion: result.promptVersion });
   const file = paths.disambiguatedTranscript(sessionDir);
-  writeFileSync(file, renderMarkdown(data.session, result.lines, config.transcript.timezone));
+  writeFileAtomic(file, renderMarkdown(data.session, result.lines, config.transcript.timezone));
   return { ...result, session: data.session, file };
 }

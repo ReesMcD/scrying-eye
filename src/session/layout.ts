@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { DamagedFileError, writeFileAtomic } from '../util/files.js';
+import { join } from 'node:path';
 import type { Participant, SessionInfo } from '../shared/types.js';
 
 /**
@@ -36,13 +37,33 @@ export interface UtteranceFile {
   path: string;
 }
 
+/** A JSON file, or undefined if there's none. Throws DamagedFileError if it can't be parsed. */
 export function readJson<T>(path: string): T | undefined {
-  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as T) : undefined;
+  if (!existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as T;
+  } catch (err) {
+    throw new DamagedFileError(path, err);
+  }
 }
 
+/**
+ * For code that goes through every session (the list, startup recovery, retention): one damaged
+ * session is reported and skipped instead of failing all of them. Other errors still throw.
+ */
+export function skipDamaged<T>(id: string, read: () => T): T | undefined {
+  try {
+    return read();
+  } catch (err) {
+    if (!(err instanceof DamagedFileError)) throw err;
+    console.warn(`Skipping session ${id}: ${err.message}`);
+    return undefined;
+  }
+}
+
+/** Saves JSON atomically: a crash mid-write leaves the old file, never half of the new one. */
 export function writeJson(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
+  writeFileAtomic(path, JSON.stringify(value, null, 2) + '\n');
 }
 
 /**
@@ -64,13 +85,25 @@ export function listUtterances(sessionDir: string): UtteranceFile[] {
 }
 
 export function readSessionInfo(sessionDir: string): SessionInfo {
-  const info = readJson<SessionInfo>(paths.session(sessionDir));
+  let info: SessionInfo | undefined;
+  try {
+    info = readJson<SessionInfo>(paths.session(sessionDir));
+  } catch (err) {
+    // A session.json cut off by a crash: say so, and rebuild what we can from the audio.
+    console.warn(`${(err as Error).message}; using the audio's times instead`);
+  }
   if (info) return info;
   // Older/crashed sessions: derive from the audio.
   const first = listUtterances(sessionDir)[0];
   return { id: sessionDir.split(/[\\/]/).filter(Boolean).at(-1) ?? 'session', startedAt: first?.startMs ?? Date.now() };
 }
 
+/** Who spoke, by Discord ID. A file damaged by a crash reads as empty (names fall back to IDs), with a warning. */
 export function readParticipants(sessionDir: string): Record<string, Participant> {
-  return readJson<Record<string, Participant>>(paths.participants(sessionDir)) ?? {};
+  try {
+    return readJson<Record<string, Participant>>(paths.participants(sessionDir)) ?? {};
+  } catch (err) {
+    console.warn(`${(err as Error).message}; showing Discord IDs instead of names`);
+    return {};
+  }
 }

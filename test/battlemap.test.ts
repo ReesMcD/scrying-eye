@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blankMap, canPlace, cellsOf, distanceFeet, doorsAt, footprint, isDifficult, moveToken, nearestFree, placeToken, playersMap, readMap, setDifficult, setDoor, tokenAt, type BattleMap } from '../src/shared/battlemap.js';
+import { blankMap, canPlace, cellsOf, distanceFeet, doorsAt, footprint, isDifficult, moveToken, nearestFree, placeToken, playersMap, readMap, setDifficult, setDoor, tokenAt } from '../src/shared/battlemap.js';
 import { applyAction, newEncounter, makeCombatant } from '../src/encounter/rules.js';
 import { playerAction, playerView } from '../src/play/view.js';
 import type { EncounterState } from '../src/shared/types.js';

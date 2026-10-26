@@ -14,6 +14,21 @@ export const BOT_PERMISSIONS =
   PermissionFlagsBits.Connect |
   PermissionFlagsBits.Speak;
 
+const PERMISSION_NAMES: Array<[bigint, string]> = [
+  [PermissionFlagsBits.ViewChannel, 'View Channels'],
+  [PermissionFlagsBits.SendMessages, 'Send Messages'],
+  [PermissionFlagsBits.AttachFiles, 'Attach Files'],
+  [PermissionFlagsBits.EmbedLinks, 'Embed Links'],
+  [PermissionFlagsBits.Connect, 'Connect'],
+  [PermissionFlagsBits.Speak, 'Speak'],
+];
+
+/** Which of the permissions the bot needs it lacks, by name (#63). Administrator has them all. */
+export function missingPermissions(have: bigint): string[] {
+  if (have & PermissionFlagsBits.Administrator) return [];
+  return PERMISSION_NAMES.filter(([bit]) => !(have & bit)).map(([, name]) => name);
+}
+
 /** The link that (re-)adds the bot with slash commands and every permission it needs. */
 export function inviteUrl(applicationId: string): string {
   return `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot+applications.commands&permissions=${BOT_PERMISSIONS}`;

@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Config } from '../config/schema.js';
 import type { Combatant, EncounterState, WikiEncounter, WikiEncounterSummary } from '../shared/types.js';
 import { readMap } from '../shared/battlemap.js';
+import { writeFileAtomic } from '../util/files.js';
 import { combatantId, makeCombatant, newEncounter, sortOrder } from './rules.js';
 
 /**
@@ -64,9 +65,7 @@ export class WikiEncounters {
     const file = cacheFile(this.dataDir, campaign, id);
     try {
       const encounter = await getJson<WikiEncounter>(url, this.token(), this.doFetch);
-      mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(`${file}.tmp`, JSON.stringify(encounter));
-      renameSync(`${file}.tmp`, file);
+      writeFileAtomic(file, JSON.stringify(encounter));
       return encounter;
     } catch (err) {
       // Unreachable (not refused or missing): use the copy from last time, if there is one.
