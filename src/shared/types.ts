@@ -478,7 +478,20 @@ export interface WikiEncounter extends WikiEncounterSummary {
   /** The battle map, in the wiki's docs/battlemap.md format (v1). */
   map: Record<string, unknown> | null;
   map_error?: string;
-  party: Array<{ name: string; player: string | null; level: number | null; class: string | null; race: string | null; ac: number | null; hp: number | null; passive_perception: number | null }>;
+  party: Array<{
+    name: string;
+    player: string | null;
+    level: number | null;
+    class: string | null;
+    race: string | null;
+    ac: number | null;
+    hp: number | null;
+    passive_perception: number | null;
+    /** From D&D Beyond through the wiki's party sync, when it sends them (#54). */
+    initiative_bonus?: number | null;
+    dex?: number | null;
+    speed?: number | null;
+  }>;
 }
 
 export interface EncounterLogEntry {
@@ -574,6 +587,8 @@ export interface EncounterOutcome {
   standing: string[];
   /** XP for the defeated, from their stat blocks (0 when none say). */
   xp: number;
+  /** PCs' HP at the end, to copy to D&D Beyond (#54). */
+  party: Array<{ name: string; hp: number | null; maxHp: number | null }>;
   /** The wiki encounter it was run from, so the result can go back. */
   source?: { wikiId: string; campaign: string };
   text: string;

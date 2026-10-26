@@ -41,6 +41,11 @@ export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | nu
       {outcome && (
         <div className="card notice" role="status">
           <strong>Encounter ended.</strong> {outcome.text}
+          {outcome.party.some((c) => c.hp !== null && c.maxHp !== null && c.hp < c.maxHp) && (
+            <div className="muted small" style={{ marginTop: 4 }}>
+              D&amp;D Beyond doesn’t take changes from here: players update their HP on their sheets.
+            </div>
+          )}
         </div>
       )}
       {error && <div className="error-box">{error}</div>}

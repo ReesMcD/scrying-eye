@@ -494,5 +494,8 @@ export function outcomeOf(s: EncounterState, endedAt: number): EncounterOutcome 
   if (defeated.length) parts.push(`Defeated: ${defeated.join(', ')}${xp ? ` (${xp.toLocaleString('en-US')} XP)` : ''}.`);
   if (standing.length) parts.push(`Still standing: ${standing.join(', ')}.`);
   if (downed.length) parts.push(`Dropped to 0 HP: ${downed.join(', ')}.`);
-  return { id: s.id, title: s.title, rounds, startedAt: s.startedAt, endedAt, defeated, downed, standing, xp, ...(s.source ? { source: s.source } : {}), text: parts.join(' ') };
+  const party = s.combatants.filter((c) => c.kind === 'pc').map((c) => ({ name: c.name, hp: c.hp, maxHp: c.maxHp }));
+  const hurt = party.filter((c) => c.hp !== null && c.maxHp !== null && c.hp < c.maxHp);
+  if (hurt.length) parts.push(`HP at the end: ${hurt.map((c) => `${c.name} ${c.hp}/${c.maxHp}`).join(', ')}.`);
+  return { id: s.id, title: s.title, rounds, startedAt: s.startedAt, endedAt, defeated, downed, standing, xp, party, ...(s.source ? { source: s.source } : {}), text: parts.join(' ') };
 }

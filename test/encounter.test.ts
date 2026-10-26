@@ -369,3 +369,15 @@ test('the monster-turn assistant: what Claude is told, and off unless turned on'
   assert.equal(asked.length, 1);
   assert.equal(store.current()!.combatants.find((c) => c.id === 'aria')!.hp, 18, 'a suggestion changes nothing');
 });
+
+test("D&D Beyond numbers from the wiki's party sync: initiative and Dexterity; HP to copy back at the end (#54)", () => {
+  const prepared = encounterFromWiki({ ...WIKI, party: [{ ...WIKI.party[0]!, initiative_bonus: 7, dex: 16, speed: 30 }] }, 'e1', 0);
+  const aria = prepared.combatants.find((c) => c.id === 'aria')!;
+  assert.deepEqual([aria.initiativeBonus, aria.dex], [7, 16], 'Alert-style bonus from the sheet, not just Dexterity');
+  assert.equal(encounterFromWiki(WIKI, 'e1', 0).combatants[0]!.initiativeBonus, 0, 'an older wiki without them still works');
+
+  const outcome = outcomeOf(run(prepared, [{ type: 'damage', id: 'aria', amount: 10 }]), 1);
+  assert.deepEqual(outcome.party, [{ name: 'Aria', hp: 18, maxHp: 28 }]);
+  assert.match(outcome.text, /HP at the end: Aria 18\/28\./);
+  assert.doesNotMatch(outcomeOf(prepared, 1).text, /HP at the end/, 'nobody hurt: nothing to copy');
+});
