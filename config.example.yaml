@@ -52,6 +52,11 @@ characters: {}
 # battle_maps:
 #   assets_dir: /Users/you/Documents/Forgotten Adventures
 
+# The encounter tracker: on a monster's turn, Claude can suggest what it does (uses summary.model
+# and ANTHROPIC_API_KEY; a few cents a fight). Off unless you turn it on.
+# encounters:
+#   assistant: true
+
 transcription:
   provider: groq              # groq | openai (key in .env: GROQ_API_KEY / OPENAI_API_KEY / TRANSCRIBE_API_KEY)
   # model: whisper-large-v3-turbo   # default per provider; OpenAI needs whisper-1 for timestamps

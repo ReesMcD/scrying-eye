@@ -57,7 +57,7 @@ export function JoinPanel({ state }: { state: EncounterState }) {
       {shown && <code className="join-url">{shown}</code>}
       {link && !link.publicUrlSet && (
         <p className="small muted">
-          This link only works on this Mac. For players’ phones, turn on Tailscale Funnel and add its address in <a href={href('settings', 'players')}>Settings → Players</a>.
+          This link only works on this Mac. For players’ phones, turn on Tailscale Funnel and add its address in <a href={href('settings', 'players')}>Settings → Encounters</a>.
         </p>
       )}
       <div className="row">

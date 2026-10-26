@@ -64,6 +64,7 @@ run → Artifacts**, and you need to be signed in to GitHub to download it. Tagg
 | Import a [Craig](https://craig.chat) recording | `npm run import:craig` | Ready |
 | Web app on your phone | Tailscale → `http://<Mac name>:4400` | Ready |
 | Discord slash commands (`/record`, `/stop`, `/status`) | In your server, while the app runs | Ready, awaiting a live test |
+| Dice (`/roll`, `/rr`) and 2024 rules lookups (`/spell`, `/monster`, `/item`, `/condition`, `/rule`) | In your server, while the app runs ([G](#g-dice-and-rules-in-discord)) | Ready, awaiting a live test |
 | Auto-publishing (e.g. to GitHub) | none yet | Phase 3 |
 
 **Testing on a Mac with Claude Code?** Follow [TESTING.md](TESTING.md).
@@ -114,7 +115,7 @@ You only need the keys for the steps you'll use.
    Treat it like a password. If it leaks, reset it here.
 3. The bot needs no privileged intents. Leave **Presence**, **Server Members** and **Message Content** off.
 4. Open **OAuth2 → URL Generator**:
-   - **Scopes:** `bot` and `applications.commands` (for `/record`, `/stop`, `/status` and `/encounter`)
+   - **Scopes:** `bot` and `applications.commands` (for the slash commands)
    - **Bot permissions:** **View Channels**, **Connect**, **Speak** (to play music), **Send Messages**, **Attach Files**, **Embed Links** (the encounter's join post)
 
    Added the bot before slash commands existed? The app's Record page shows a **Re-add the bot**
@@ -451,6 +452,21 @@ What's in it:
     and refuses walls, closed doors, deep water and occupied squares. **Doors** opens, closes and
     locks them; **Difficult** marks or clears squares; combatants without a token are placed with a
     tap. A blank encounter can get a blank grid. Pinch or scroll to zoom, drag the map to pan.
+  - **Exploring:** the DM sees each room's key and name. Secret doors are walls (dashed for the DM)
+    until the party finds one; tap it under **Doors** to make it a door. **Fog** hides the map from
+    players until it's revealed, by square or by room, or automatically as the party's tokens see
+    more (walls and closed doors block sight). Players' phones get only what's revealed.
+  - **Spell areas and measuring:** drag a sphere, cone, line or cube out from a grid corner; a
+    square counts when at least half of it is covered (2024 rules). Everyone sees areas; each
+    person has one at a time. **Measure** shows the distance between two corners to you alone.
+  - **Dice:** quick buttons (d20, advantage, disadvantage, d4–d12) or any notation (`1d20+5`,
+    `2d6+3`, `4d6kh3`). The app rolls, so no phone decides a result, and everyone sees the table's
+    latest rolls. The DM can roll in secret; a hidden monster's rolls are always secret. Turn on
+    **Post to Discord** to send the table's rolls to the channel too.
+  - **Monster turns (optional):** turn on **Settings → Encounters → Suggest monsters' moves**, and
+    on a monster's turn **Suggest a move** asks Claude what it would do, from its stat block, the
+    wiki's tactics and where everyone stands. You decide; nothing happens by itself. It uses the
+    recap's model and Anthropic key.
   - **Map art:** point **Settings → Battle maps** at a folder of map art on this Mac, like the
     [Forgotten Adventures](https://www.forgotten-adventures.net/) packs. Pictures are matched by
     file name (`Tree_Oak_A1_2x2.png` is a 2×2 oak; textures for grass, road, water): first a file
@@ -458,6 +474,9 @@ What's in it:
     is drawn plainly, and the rules always come from the map, never the pictures. The files stay
     in that folder: players' phones get only the pictures on the map in play, and they're never
     copied, uploaded or bundled into the app (FA's free packs are for personal use).
+  - **When it ends:** you get a summary (rounds, who fell, XP from the stat blocks). A fight from
+    the wiki is reported back to it (once the wiki accepts results; until then it's just noted in
+    the log), and fights run during a recorded session go into that session's recap.
   - It survives an app restart, and every open view updates live.
 - **Players' link**: players follow the fight on their phone or in a browser, with nothing to
   install.
@@ -465,9 +484,10 @@ What's in it:
     once and the device remembers it.
   - They see whose turn it is ("Your turn" buzzes the phone), the party's HP and conditions, and
     whether monsters look healthy, bloodied or down.
-  - They change only their own character's HP, conditions and initiative, and move only their own
-    token on the map (hidden monsters and the DM's map notes never reach their phones).
-  - To reach their phones it needs a public address: see **Settings → Players** (Tailscale Funnel).
+  - They change only their own character's HP, conditions and initiative, move only their own
+    token on the map, roll dice for the table and place their own spell area (hidden monsters, the
+    DM's map notes and anything under the fog never reach their phones).
+  - To reach their phones it needs a public address: see **Settings → Encounters** (Tailscale Funnel).
   - **Posting the link:**
     - **From Discord:** `/encounter start` (pick one prepared in the wiki as you type, or type a
       name for a blank one) posts the link with a **Join** button in that channel. `/encounter link`
@@ -505,6 +525,28 @@ stay on the Mac (or an always-on server). The pages are built to call the API fr
 site: build with `VITE_API_URL=https://<your API address>` and list the Vercel URL in
 `APP_CORS_ORIGINS`.
 
+### G. Dice and rules in Discord
+
+Anyone in the server can use these while the app runs. Replies are public; add `private: True`
+to see one only yourself.
+
+- **`/roll dice:1d20+5 label:Longsword`**: every die is shown, crits and natural 1s are called
+  out. Leave `dice` empty for a d20.
+  - Notation: `2d6+1d4+3`, `1d20 adv` / `dis`, keep or drop (`4d6kh3`, `2d20kl1`, `8d6dl2`),
+    rerolls (`1d6ro1` once, `2d6r<2` until above 2), exploding dice (`3d6!`), `d%`.
+  - Dice come from the system's secure random generator.
+- **`/rr count:6 dice:4d6kh3`** repeats a roll (ability scores) and adds them up.
+- **While recording**, public rolls go into the transcript where they happened
+  (`[roll] Longsword: 1d20+5 = 25 (natural 20)`), so the recap can mention them. Private rolls don't.
+- **`/spell`, `/monster`, `/item`, `/condition`, `/rule`**: names autocomplete as you type, and
+  the reply is the entry (a full stat block for monsters). It's the free 2024 rules (SRD 5.2),
+  bundled with the app, so it's instant and works offline. Other books aren't included.
+
+The rules text includes material from the System Reference Document 5.2 ("SRD 5.2") by Wizards of
+the Coast LLC, available at <https://www.dndbeyond.com/srd>, licensed under
+[CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode). Structured data via
+[Open5e](https://open5e.com). The condition summaries are our own.
+
 ### What's in a session folder
 
 ```
@@ -518,6 +560,7 @@ data/sessions/<session-id>/
   audio/<userId>/<start>.ogg  one file per utterance (open with VLC)
   transcripts/<userId>.json  per-speaker transcription with exact times
   segments.json             merged transcript, machine-readable
+  rolls.jsonl               public /rolls during the recording (go into the transcript)
   summary/meta.json         model, prompt versions, token usage of the last recap
   summary/audit/            what the clean-up and completeness checks changed
   summary/generated.md, summary/edited-*.md   the generated recap / your edits, kept when replaced
@@ -621,6 +664,8 @@ src/
   import/         Craig import, silence detection
   transcription/  Transcriber interface, Groq/OpenAI client, batching, timestamp mapping
   transcript/     merge into transcript.md
+  bot/            the Discord bot: recording, slash commands, dice and lookups
+  srd/            the bundled 2024 rules (SRD 5.2, CC-BY-4.0) and lookups
   summary/        recap pipeline: chunking, Claude calls, clean-up, audits, kill count, edits
   config/         config.yaml schema + loader
   session/        session folder layout (the contract between every step)

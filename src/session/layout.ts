@@ -26,7 +26,33 @@ export const paths = {
   cleanTranscript: (dir: string) => join(dir, 'transcript.clean.md'),
   /** Lines transcribed during the recording (a preview; transcript.md is the reference). */
   live: (dir: string) => join(dir, 'live.jsonl'),
+  /** Dice rolled with /roll during the recording; the transcript shows them in place. */
+  rolls: (dir: string) => join(dir, 'rolls.jsonl'),
 };
+
+/** One /roll during a recording (a line of rolls.jsonl). */
+export interface RollNote {
+  userId: string;
+  /** Epoch ms. */
+  at: number;
+  /** Plain text, e.g. "Longsword: 1d20+5 = 22 (natural 20)". */
+  text: string;
+}
+
+/** The rolls noted during a recording; a damaged line is skipped (the file is append-only). */
+export function readRolls(sessionDir: string): RollNote[] {
+  const file = paths.rolls(sessionDir);
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .flatMap((line) => {
+      try {
+        return line.trim() ? [JSON.parse(line) as RollNote] : [];
+      } catch {
+        return [];
+      }
+    });
+}
 
 export type { Participant, SessionInfo } from '../shared/types.js';
 
@@ -48,15 +74,16 @@ export function readJson<T>(path: string): T | undefined {
 }
 
 /**
- * For code that goes through every session (the list, startup recovery, retention): one damaged
- * session is reported and skipped instead of failing all of them. Other errors still throw.
+ * For code that goes through every session or saved encounter (the list, startup recovery,
+ * retention, past fights): one damaged file is reported and skipped instead of failing all of
+ * them. Other errors still throw.
  */
-export function skipDamaged<T>(id: string, read: () => T): T | undefined {
+export function skipDamaged<T>(what: string, read: () => T): T | undefined {
   try {
     return read();
   } catch (err) {
     if (!(err instanceof DamagedFileError)) throw err;
-    console.warn(`Skipping session ${id}: ${err.message}`);
+    console.warn(`Skipping ${what}: ${err.message}`);
     return undefined;
   }
 }

@@ -16,7 +16,7 @@ const sameSecret = (a: string, b: string) => a.length === b.length && timingSafe
 /**
  * The encounter being run, one at a time, kept in <data>/encounters/current.json so it survives
  * an app restart. Ended encounters move to <data>/encounters/history/. Emits "encounter" with
- * the new state (or null when none) after every change.
+ * the new state (or null when none) after every change, and "roll" with a roll to post to Discord.
  */
 export class EncounterStore extends EventEmitter {
   private state: EncounterState | null;
@@ -124,6 +124,8 @@ export class EncounterStore extends EventEmitter {
     if (!this.state) throw new EncounterError('No encounter is running');
     const next = applyAction(this.state, action, this.deps);
     this.save(next);
+    const rolled = action.type === 'roll' ? next.rolls?.at(-1) : undefined;
+    if (rolled && !rolled.secret && next.postRolls) this.emit('roll', rolled);
     return next;
   }
 

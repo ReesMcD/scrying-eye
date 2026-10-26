@@ -99,9 +99,9 @@ test('/stop stops this server’s recording and says what happens next', async (
   assert.equal(bot.stops, 3);
 });
 
-test('commands: guild only; /record, /stop and /encounter default to Manage Server, /status to everyone', () => {
+test('commands: guild only; /record, /stop and /encounter default to Manage Server, /status and the table commands to everyone', () => {
   const byName = Object.fromEntries(COMMANDS.map((c) => [c.name, c]));
-  assert.deepEqual(Object.keys(byName).sort(), ['encounter', 'record', 'status', 'stop']);
+  assert.deepEqual(Object.keys(byName).sort(), ['condition', 'encounter', 'item', 'monster', 'record', 'roll', 'rr', 'rule', 'spell', 'status', 'stop']);
   for (const c of COMMANDS) assert.deepEqual(c.contexts, [0], `${c.name} works in servers only`);
   assert.equal(byName.record!.default_member_permissions, String(PermissionFlagsBits.ManageGuild));
   assert.equal(byName.stop!.default_member_permissions, String(PermissionFlagsBits.ManageGuild));

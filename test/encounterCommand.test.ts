@@ -82,8 +82,8 @@ test('without a public address the DM is told how to set it up, and nothing is p
   const { d } = deps(null);
   const r = await runEncounterCommand('start', 'Brawl', d);
   assert.equal(r.post, undefined);
-  assert.match(r.reply, /Tailscale Funnel.*Settings → Players/);
-  assert.match((await runEncounterCommand('link', undefined, d)).reply, /Settings → Players/);
+  assert.match(r.reply, /Tailscale Funnel.*Settings → Encounters/);
+  assert.match((await runEncounterCommand('link', undefined, d)).reply, /Settings → Encounters/);
 });
 
 test('/encounter end: the DM gets the summary; players only hear it is over (no hidden foes named)', async () => {

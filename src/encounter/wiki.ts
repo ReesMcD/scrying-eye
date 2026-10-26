@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config } from '../config/schema.js';
-import type { Combatant, EncounterState, WikiEncounter, WikiEncounterSummary } from '../shared/types.js';
+import type { Combatant, EncounterOutcome, EncounterState, WikiEncounter, WikiEncounterSummary } from '../shared/types.js';
 import { readMap } from '../shared/battlemap.js';
 import { writeFileAtomic } from '../util/files.js';
 import { combatantId, makeCombatant, newEncounter, sortOrder } from './rules.js';
@@ -74,6 +74,40 @@ export class WikiEncounters {
       }
       throw err;
     }
+  }
+
+  /**
+   * Sends how a fight went back to the wiki it came from (#58): POST /api/encounters/<id>/result,
+   * so the wiki can mark it run and log it. A wiki without that endpoint yet answers 404 or 405,
+   * which isn't an error worth more than a line in the log. Returns that line.
+   */
+  async sendResult(outcome: EncounterOutcome): Promise<string> {
+    if (!outcome.source) return 'Not from the wiki: nothing to send';
+    const url = encountersUrl(this.config());
+    url.pathname += `/${encodeURIComponent(outcome.source.wikiId)}/result`;
+    url.searchParams.set('campaign', outcome.source.campaign);
+    const token = this.token();
+    if (!token) return 'Not sent to the wiki: its key is missing (Settings → Keys)';
+    const body = {
+      title: outcome.title,
+      rounds: outcome.rounds,
+      started_at: new Date(outcome.startedAt).toISOString(),
+      ended_at: new Date(outcome.endedAt).toISOString(),
+      defeated: outcome.defeated,
+      standing: outcome.standing,
+      downed: outcome.downed,
+      xp: outcome.xp,
+      summary: outcome.text,
+    };
+    let res: Response;
+    try {
+      res = await this.doFetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'ScryingEye' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+    } catch (err) {
+      return `Couldn't send the result to the wiki: ${(err as Error).message}`;
+    }
+    if (res.ok) return `Sent "${outcome.title}" to the wiki`;
+    if (res.status === 404 || res.status === 405) return "The wiki doesn't take encounter results yet; nothing sent";
+    return `The wiki refused the result (${res.status})`;
   }
 }
 

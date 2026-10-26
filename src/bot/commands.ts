@@ -1,6 +1,7 @@
 import { ChannelType, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder, type RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
 import type { BotControl, RecordingStatus } from './types.js';
 import { ENCOUNTER_COMMAND } from './encounterCommand.js';
+import { TABLE_COMMANDS } from './tableCommands.js';
 
 /**
  * What the bot needs in a server: View Channels, Send Messages and Attach Files (notices and
@@ -36,7 +37,8 @@ export function inviteUrl(applicationId: string): string {
 
 /**
  * /record, /stop and /encounter default to people with Manage Server (who can allow other roles under Server
- * Settings → Integrations); /status is open to everyone, so anyone can check they're being recorded.
+ * Settings → Integrations); /status is open to everyone, so anyone can check they're being recorded, and so
+ * are the dice and rules lookups.
  */
 export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   new SlashCommandBuilder()
@@ -50,6 +52,7 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   new SlashCommandBuilder().setName('stop').setDescription('Stop recording').setContexts(InteractionContextType.Guild).setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).toJSON(),
   new SlashCommandBuilder().setName('status').setDescription('Is this server being recorded, and who is in it?').setContexts(InteractionContextType.Guild).toJSON(),
   ENCOUNTER_COMMAND,
+  ...TABLE_COMMANDS,
 ];
 
 export type CommandName = 'record' | 'stop' | 'status';

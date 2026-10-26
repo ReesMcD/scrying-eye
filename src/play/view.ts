@@ -10,6 +10,9 @@ export function healthOf(c: Combatant): Health | null {
   return c.maxHp && c.hp <= c.maxHp / 2 ? 'bloodied' : 'healthy';
 }
 
+/** How many of the table's rolls a phone shows. */
+const PLAYER_ROLLS = 12;
+
 /**
  * One player's view of the encounter. Leaves out hidden combatants entirely, monsters' and NPCs'
  * numbers (only how hurt they look), initiative values, stat blocks, DM notes and the log. The
@@ -50,6 +53,7 @@ export function playerView(s: EncounterState, me: string | null): PlayerView {
     fog: s.map && s.fog ? s.fog.revealed : null,
     // An area under the fog would give away what's there: players see only those they could see.
     templates: (s.templates ?? []).filter((t) => !s.fog || s.fog.revealed.includes(`${Math.min(t.at[0], (s.map?.width ?? 1) - 1)},${Math.min(t.at[1], (s.map?.height ?? 1) - 1)}`)),
+    rolls: (s.rolls ?? []).filter((r) => !r.secret).slice(-PLAYER_ROLLS),
   };
 }
 
@@ -82,6 +86,8 @@ export function playerAction(s: EncounterState, me: string | null, request: Play
       return { type: 'template', template: { ...request.template, label: mine.name }, by: mine.id };
     case 'clearTemplate':
       return { type: 'clearTemplate', id: request.id, by: mine.id };
+    case 'roll':
+      return { type: 'roll', expression: request.expression, ...(request.label ? { label: request.label } : {}), by: mine.id };
     default:
       throw new EncounterError('Unknown request');
   }

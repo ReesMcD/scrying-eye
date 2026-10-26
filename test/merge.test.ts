@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseConfig } from '../src/config/load.js';
@@ -82,4 +82,21 @@ test('campaign sessions name lines by character and keep the real name; others a
   const elsewhere = make('999999999999999999');
   mergeSession(elsewhere, config);
   assert.match(readFileSync(paths.transcript(elsewhere), 'utf8'), /\[00:00:01\] Sam: I kick the door in\./, 'other channels keep real names');
+});
+
+test('public /rolls made during the recording appear in the transcript where they happened', () => {
+  const T = Date.UTC(2026, 9, 20, 23);
+  const SAM = '222222222222222222';
+  const dir = mkdtempSync(join(tmpdir(), 'rolls-'));
+  writeJson(paths.session(dir), { id: 's', startedAt: T, stoppedAt: T + 60_000 });
+  writeJson(paths.participants(dir), { [SAM]: { displayName: 'Sam' } });
+  const said = (sec: number, text: string) => ({ startMs: T + sec * 1000, endMs: T + sec * 1000 + 800, text, utteranceStartMs: T });
+  writeJson(join(paths.transcriptsDir(dir), `${SAM}.json`), { userId: SAM, transcriber: 'fake', segments: [said(1, 'I swing at it.'), said(9, 'Yes!')], dropped: [] });
+  const note = (sec: number, text: string) => JSON.stringify({ userId: SAM, at: T + sec * 1000, text });
+  // A cut-off last line (the app quit mid-write) is skipped, not fatal.
+  writeFileSync(paths.rolls(dir), `${note(5, 'Longsword: 1d20+5 = 25 (natural 20)')}\n{"userId":"2`);
+
+  mergeSession(dir, parseConfig('').config);
+  const md = readFileSync(paths.transcript(dir), 'utf8');
+  assert.match(md, /\[00:00:01\] Sam: I swing at it\.\n\[00:00:05\] Sam: \[roll\] Longsword: 1d20\+5 = 25 \(natural 20\)\n\[00:00:09\] Sam: Yes!/);
 });

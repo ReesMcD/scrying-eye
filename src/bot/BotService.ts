@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction, type Guild, type VoiceBasedChannel } from 'discord.js';
 import { campaignForChannel } from '../config/roster.js';
 import { COMMANDS, inviteUrl, missingPermissions, runCommand, type CommandName } from './commands.js';
+import { isLookupCommand, isTableCommand, lookupCard, lookupChoices, rollReply } from './tableCommands.js';
 import { encounterChoices, runEncounterCommand, type EncounterCommandDeps, type EncounterPost } from './encounterCommand.js';
 import { loadConfig } from '../config/load.js';
 import { listUtterances, paths, readJson, skipDamaged, writeJson, type SessionInfo } from '../session/layout.js';
@@ -46,7 +47,7 @@ export function recoverInterrupted(dataDir: string): string[] {
   const recovered: string[] = [];
   for (const id of readdirSync(root)) {
     const dir = join(root, id);
-    const info = skipDamaged(id, () => readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir)));
+    const info = skipDamaged(`session ${id}`, () => readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir)));
     if (!info || info.source !== 'bot' || info.stoppedAt) continue;
     const last = listUtterances(dir).reduce((m, u) => Math.max(m, statSync(u.path).mtimeMs), info.startedAt);
     writeJson(paths.session(dir), { ...info, stoppedAt: Math.round(last), interrupted: true });
@@ -143,8 +144,9 @@ export class BotService extends EventEmitter implements BotControl {
     });
     client.on(Events.GuildCreate, (g) => void this.registerCommands(g).then(() => this.emitStatus(true)));
     client.on(Events.InteractionCreate, (i) => {
-      if (i.isChatInputCommand()) void (i.commandName === 'encounter' ? this.answerEncounter(i) : this.answer(i));
+      if (i.isChatInputCommand()) void (i.commandName === 'encounter' ? this.answerEncounter(i) : isTableCommand(i.commandName) ? this.answerTable(i) : this.answer(i));
       else if (i.isAutocomplete() && i.commandName === 'encounter') void this.suggestEncounters(i);
+      else if (i.isAutocomplete() && isLookupCommand(i.commandName)) void i.respond(lookupChoices(i.commandName, String(i.options.getFocused()))).catch(() => {});
       else if (i.isAutocomplete() && i.commandName === 'record') void this.suggestCampaigns(i);
     });
     client.on(Events.VoiceStateUpdate, () => this.emitStatus());
@@ -164,7 +166,7 @@ export class BotService extends EventEmitter implements BotControl {
     }
   }
 
-  /** Registers /record, /stop and /status in a server (per server, so they appear at once). */
+  /** Registers the slash commands in a server (per server, so they appear at once). */
   private async registerCommands(guild: Guild): Promise<void> {
     try {
       await guild.commands.set(COMMANDS);
@@ -219,6 +221,29 @@ export class BotService extends EventEmitter implements BotControl {
       await i.editReply(reply);
     } catch (err) {
       this.log(`/encounter: ${(err as Error).message}`);
+    }
+  }
+
+  /** /roll, /rr and the SRD lookups: public unless `private`; a bad roll is shown only to its roller. */
+  private async answerTable(i: ChatInputCommandInteraction): Promise<void> {
+    if (!i.inGuild()) return;
+    const ephemeral = i.options.getBoolean('private') === true;
+    try {
+      if (isLookupCommand(i.commandName)) {
+        const card = lookupCard(i.commandName, i.options.getString('name', true));
+        if ('notFound' in card) return void (await i.reply({ content: card.notFound, flags: MessageFlags.Ephemeral }));
+        const embed = new EmbedBuilder().setTitle(card.title).setDescription(card.description).setFooter({ text: card.footer }).setColor(0x7fe7d4);
+        return void (await i.reply({ embeds: [embed], ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}) }));
+      }
+      const who = i.member && 'displayName' in i.member ? i.member.displayName : i.user.displayName;
+      const label = i.options.getString('label') ?? undefined;
+      const count = i.commandName === 'rr' ? i.options.getInteger('count', true) : 1;
+      const result = rollReply(who, i.options.getString('dice') ?? undefined, { ...(label ? { label } : {}), count });
+      await i.reply({ content: result.content, ...(ephemeral || result.error ? { flags: MessageFlags.Ephemeral } : {}), allowedMentions: { parse: [] } });
+      // Public rolls in the call being recorded go into its transcript (private ones stay secret).
+      if (result.note && !ephemeral && this.recorder?.status().guildId === i.guildId) this.recorder.noteRoll({ userId: i.user.id, at: Date.now(), text: result.note });
+    } catch (err) {
+      this.log(`/${i.commandName}: ${(err as Error).message}`);
     }
   }
 

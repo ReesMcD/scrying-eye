@@ -20,6 +20,7 @@ import { configObject, configSchema } from '../config/schema.js';
 import { encounterRoutes } from './encounterRoutes.js';
 import { EncounterStore } from '../encounter/store.js';
 import { WikiEncounters } from '../encounter/wiki.js';
+import { ClaudeTurnAdvisor, type TurnAdvisor } from '../encounter/assistant.js';
 import type { DndBeyondCharacter, EncounterState, JobUpdate } from '../shared/types.js';
 import { DndBeyondError, lookupCharacter } from '../dndbeyond/characters.js';
 import { artImage, MapArt } from '../battlemap/library.js';
@@ -45,6 +46,8 @@ export interface ApiOptions {
   encounters?: EncounterStore;
   /** For tests: the HTTP client for calls out (the wiki's encounters, the join link check). */
   httpFetch?: typeof fetch;
+  /** For tests: the monster-turn assistant (default: Claude, when turned on). */
+  turnAdvisor?: TurnAdvisor;
   /** The wiki's encounters (default: from the upload settings and WIKI_UPLOAD_TOKEN). */
   wikiEncounters?: WikiEncounters;
   /** Battle map art from the folder in the settings (default: one reading the settings). */
@@ -278,6 +281,13 @@ export function createApi(opts: ApiOptions): Hono {
       },
       opts.httpFetch,
       opts.bot,
+      () => {
+        const config = configSchema.parse(opts.configStore.read().config ?? {});
+        if (!config.encounters.assistant) return { off: 'Monster-turn suggestions are off: turn them on under Settings → Encounters' };
+        if (opts.turnAdvisor) return opts.turnAdvisor;
+        if (!process.env.ANTHROPIC_API_KEY) return { off: 'Add your Anthropic key under Settings → Keys first' };
+        return new ClaudeTurnAdvisor(config.summary.model);
+      },
     ),
   );
 

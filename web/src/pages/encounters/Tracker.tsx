@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Combatant, CombatantKind, EncounterAction, EncounterState } from '../../types';
-import { Badge } from '../../ui';
+import type { Combatant, CombatantKind, EncounterAction, EncounterState, TurnSuggestion } from '../../types';
+import { api } from '../../api';
+import { DicePanel } from '../../dice/DicePanel';
+import { Badge, Toggle } from '../../ui';
 import { CombatantPanel } from './CombatantPanel';
 import { JoinPanel } from './JoinPanel';
 import { MapCard } from './MapCard';
@@ -8,7 +10,7 @@ import { MapCard } from './MapCard';
 type Act = (action: EncounterAction) => Promise<void>;
 
 /** The DM's tracker: turn order, HP, conditions, and the controls to run the round. */
-export function Tracker({ state, act, onEnd }: { state: EncounterState; act: Act; onEnd: () => Promise<void> }) {
+export function Tracker({ state, act, onEnd, assistant }: { state: EncounterState; act: Act; onEnd: () => Promise<void>; assistant: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const byId = new Map(state.combatants.map((c) => [c.id, c]));
@@ -51,6 +53,8 @@ export function Tracker({ state, act, onEnd }: { state: EncounterState; act: Act
         )}
       </div>
 
+      {assistant && running && current && current.kind !== 'pc' && <TurnIdea key={`${state.round}-${current.id}`} combatant={current} />}
+
       <JoinPanel state={state} />
 
       {checks.map((c) => (
@@ -86,6 +90,8 @@ export function Tracker({ state, act, onEnd }: { state: EncounterState; act: Act
       </ol>
 
       <AddCombatant act={act} />
+
+      <DmDice state={state} act={act} />
 
       {state.notes && Object.values(state.notes).some(Boolean) && (
         <details className="card">
@@ -263,5 +269,70 @@ function AddCombatant({ act }: { act: Act }) {
         </button>
       </form>
     </details>
+  );
+}
+
+/** The DM's dice: shown to the table unless secret, and posted to Discord when that's on. */
+function DmDice({ state, act }: { state: EncounterState; act: Act }) {
+  const [secret, setSecret] = useState(false);
+  return (
+    <DicePanel
+      rolls={state.rolls ?? []}
+      onRoll={(expression, label) => act({ type: 'roll', expression, ...(label ? { label } : {}), ...(secret ? { secret: true } : {}) })}
+      extra={
+        <>
+          <Toggle checked={secret} onChange={setSecret} label="Secret" hint="Only you see it" />
+          <Toggle checked={!!state.postRolls} onChange={(on) => void act({ type: 'postRolls', on })} label="Post to Discord" hint="Public rolls go to the channel too" />
+        </>
+      }
+    />
+  );
+}
+
+/** On a monster's turn: ask Claude what it would do (#58). The DM decides; nothing changes by itself. */
+function TurnIdea({ combatant }: { combatant: Combatant }) {
+  const [idea, setIdea] = useState<TurnSuggestion | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ask = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      setIdea(await api<TurnSuggestion>('/encounter/suggest', { method: 'POST', json: { id: combatant.id } }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card turn-idea" aria-live="polite">
+      {idea ? (
+        <>
+          <p style={{ margin: 0 }}>{idea.suggestion}</p>
+          {(idea.action || idea.target) && (
+            <p className="muted small" style={{ margin: '6px 0 0' }}>
+              {[idea.action, idea.target && `at ${idea.target}`].filter(Boolean).join(' ')}
+            </p>
+          )}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="link" onClick={() => void ask()} disabled={busy}>
+              {busy ? 'Thinking…' : 'Another idea'}
+            </button>
+            <button className="link" onClick={() => setIdea(null)}>
+              Dismiss
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="row spread">
+          <span className="muted small">What would {combatant.name} do?</span>
+          <button onClick={() => void ask()} disabled={busy}>
+            {busy ? 'Thinking…' : 'Suggest a move'}
+          </button>
+        </div>
+      )}
+      {error && <div className="field-error">{error}</div>}
+    </div>
   );
 }

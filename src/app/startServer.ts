@@ -20,6 +20,7 @@ import { UPLOAD_TOKEN_ENV } from '../upload/recapUpload.js';
 import type { MusicControl } from '../music/control.js';
 import { EncounterStore } from '../encounter/store.js';
 import { startPlayerServer } from '../play/playerServer.js';
+import type { EncounterOutcome, EncounterRoll } from '../shared/types.js';
 
 export interface ServerOptions {
   /** Pass a function when the password can change while the server runs. */
@@ -87,6 +88,15 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       const players = configStore.read().config?.players;
       return code && players ? publicJoinUrl({ publicUrl: players.public_url, port: players.port }, code) : null;
     },
+  });
+  // How a fight from the wiki went goes back to it (#58).
+  encounters.on('ended', (outcome: EncounterOutcome) => {
+    if (outcome.source) void wikiEncounters.sendResult(outcome).then(log);
+  });
+  // The table's rolls, when the DM turned on posting them (#58).
+  encounters.on('roll', (roll: EncounterRoll) => {
+    if (opts.bot?.status().state !== 'ready' || !opts.bot.postEncounter) return;
+    opts.bot.postEncounter({ title: `🎲 ${roll.who}${roll.label ? `: ${roll.label}` : ''}`, description: roll.text }).catch((err: Error) => log(`Couldn't post a roll to Discord: ${err.message}`));
   });
 
   const app = new Hono();

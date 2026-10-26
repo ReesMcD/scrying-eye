@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, subscribe } from '../../api';
-import type { EncounterAction, EncounterOutcome, EncounterState } from '../../types';
+import type { ConfigState, EncounterAction, EncounterOutcome, EncounterState } from '../../types';
 import { Prepare } from './Prepare';
 import { Tracker } from './Tracker';
 
@@ -9,8 +9,10 @@ export function EncountersPage() {
   const [state, setState] = useState<EncounterState | null | undefined>(undefined);
   const [outcome, setOutcome] = useState<EncounterOutcome | null>(null);
   const [error, setError] = useState('');
+  const [assistant, setAssistant] = useState(false);
 
   useEffect(() => {
+    api<ConfigState>('/config').then((c) => setAssistant(!!c.config?.encounters.assistant), () => {});
     api<EncounterState | null>('/encounter').then(setState, (e: Error) => setError(e.message));
     return subscribe({ onEncounter: setState, onReconnect: () => void api<EncounterState | null>('/encounter').then(setState, () => {}) });
   }, []);
@@ -43,7 +45,7 @@ export function EncountersPage() {
         </div>
       )}
       {state ? (
-        <Tracker state={state} act={act} onEnd={end} />
+        <Tracker state={state} act={act} onEnd={end} assistant={assistant} />
       ) : (
         <Prepare
           outcome={outcome}

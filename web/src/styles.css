@@ -375,3 +375,19 @@ details > summary { cursor: pointer; }
 .join-url { display: block; margin: 10px 0; padding: 10px; overflow-wrap: anywhere; color: var(--accent); }
 .setup-steps { padding-left: 20px; }
 .setup-steps li { margin: 4px 0; }
+
+/* Dice (#58): the tracker and players' phones */
+.dice-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.dice-quick button { padding: 8px 4px; }
+.dice-form { flex-wrap: wrap; }
+.dice-form input { flex: 1 1 140px; min-width: 0; }
+.roll-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.roll { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-2); }
+.roll-total { font-size: 1.4rem; font-weight: 800; min-width: 2.2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.roll-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.roll-main .badge { margin-left: 6px; }
+.roll.crit-success { border-color: var(--good); }
+.roll.crit-success .roll-total { color: var(--good); }
+.roll.crit-fail .roll-total { color: var(--bad); }
+.dice-extra { margin-top: 10px; gap: 20px; }
+.dice-extra .toggle { margin-bottom: 0; }

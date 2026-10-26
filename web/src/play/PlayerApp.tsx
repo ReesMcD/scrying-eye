@@ -4,6 +4,7 @@ import { OrbMark } from '../icons';
 import { BattleMapView, type TokenInfo } from '../map/BattleMapView';
 import { useArtPlan } from '../map/useArtPlan';
 import { useAreaTool } from '../map/AreaTool';
+import { DicePanel, RollList } from '../dice/DicePanel';
 import { device, follow, play, PlayError } from './client';
 
 const CONDITIONS: ConditionName[] = ['Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
@@ -142,6 +143,16 @@ function Fight({ view, act }: { view: PlayerView; act: (r: Parameters<typeof pla
       {view.me && view.status === 'setup' && view.myInitiative === null && <InitiativePrompt act={act} />}
       {me && <MyCard me={me} ac={view.myAc} initiative={view.myInitiative} act={act} />}
       {view.map && <PlayerMap view={view} act={act} />}
+      {me ? (
+        <DicePanel rolls={view.rolls} onRoll={(expression, label) => act({ type: 'roll', expression, ...(label ? { label } : {}) })} />
+      ) : (
+        view.rolls.length > 0 && (
+          <section className="card" aria-label="Dice">
+            <h2 style={{ marginTop: 0 }}>Dice</h2>
+            <RollList rolls={view.rolls} />
+          </section>
+        )
+      )}
       <section aria-label="Turn order">
         <h2>Turn order</h2>
         <ol className="play-order">

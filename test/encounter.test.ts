@@ -7,7 +7,10 @@ import { createApi } from '../src/app/api.js';
 import { ConfigStore } from '../src/app/configStore.js';
 import { JobRunner } from '../src/app/jobs.js';
 import { configSchema } from '../src/config/schema.js';
-import { applyAction, EncounterError, newEncounter, sortOrder, type RuleDeps } from '../src/encounter/rules.js';
+import { applyAction, EncounterError, newEncounter, outcomeOf, sortOrder, type RuleDeps } from '../src/encounter/rules.js';
+import { fightsDuring } from '../src/encounter/history.js';
+import { turnPrompt } from '../src/encounter/assistant.js';
+import { contextBlock } from '../src/summary/context.js';
 import { EncounterStore } from '../src/encounter/store.js';
 import { encounterFromWiki, encountersUrl, WikiEncounters } from '../src/encounter/wiki.js';
 import type { EncounterAction, EncounterState, WikiEncounter } from '../src/shared/types.js';
@@ -278,4 +281,91 @@ test('the API: start from the wiki, run turns, refuse a second encounter, end it
     if (old === undefined) delete process.env.WIKI_UPLOAD_TOKEN;
     else process.env.WIKI_UPLOAD_TOKEN = old;
   }
+});
+
+test('a fight from the wiki: its XP is counted and the result goes back to the wiki', async () => {
+  const prepared = encounterFromWiki({ ...WIKI, creatures: WIKI.creatures.map((c) => ({ ...c, xp: c.name === 'Bandit' ? 25 : 450 })) }, 'e1', 0);
+  const s = run(prepared, [
+    { type: 'damage', id: 'bandit-1', amount: 11 },
+    { type: 'damage', id: 'bandit-captain', amount: 52 },
+  ]);
+  const outcome = outcomeOf(s, 60_000);
+  assert.equal(outcome.xp, 475);
+  assert.match(outcome.text, /Defeated: Bandit 1, Bandit Captain \(475 XP\)\./);
+  assert.deepEqual(outcome.source, { wikiId: 'ambush-at-long-wade', campaign: 'Crimson Tide' });
+
+  const sent: Array<{ url: string; method?: string; body: Record<string, unknown> }> = [];
+  let status = 200;
+  const doFetch: typeof fetch = async (input, init) => {
+    sent.push({ url: String(input), ...(init?.method ? { method: init.method } : {}), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    return Response.json({ ok: status === 200 }, { status });
+  };
+  const wiki = new WikiEncounters(mkdtempSync(join(tmpdir(), 'enc-')), () => WIKI_CONFIG, () => TOKEN, doFetch);
+  assert.equal(await wiki.sendResult(outcome), 'Sent "Ambush at Long Wade" to the wiki');
+  assert.equal(sent[0]!.url, 'https://wiki.example/api/encounters/ambush-at-long-wade/result?campaign=Crimson+Tide');
+  assert.equal(sent[0]!.method, 'POST');
+  assert.deepEqual([sent[0]!.body.rounds, sent[0]!.body.xp, sent[0]!.body.defeated, sent[0]!.body.standing], [0, 475, ['Bandit 1', 'Bandit Captain'], ['Bandit 2']]);
+  status = 404;
+  assert.match(await wiki.sendResult(outcome), /doesn't take encounter results yet/, 'an older wiki: a note, not an error');
+  assert.match(await wiki.sendResult({ ...outcome, source: undefined } as never), /Not from the wiki/);
+  assert.equal(sent.length, 2);
+});
+
+test('fights run during a session reach its recap, with what the tracker recorded', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'fights-'));
+  const store = new EncounterStore(dataDir, deps(), () => {});
+  store.start({ title: 'Bridge' });
+  const during = store.end();
+  mkdirSync(join(dataDir, 'encounters', 'history'), { recursive: true });
+  writeFileSync(join(dataDir, 'encounters', 'history', 'cut-off.json'), '{"state":');
+  const at = during.startedAt;
+  assert.deepEqual(fightsDuring(dataDir, at - 60_000, at + 3_600_000).map((f) => f.title), ['Bridge'], 'a damaged file is skipped');
+  assert.deepEqual(fightsDuring(dataDir, at + 3_600_000, at + 7_200_000), [], 'not in a later session');
+
+  const config = configSchema.parse({});
+  const about = contextBlock({ id: 's', startedAt: at }, [], config, [], [during]);
+  assert.match(about, /## Fights run in the encounter tracker[\s\S]*- Bridge: 0 rounds\./);
+  assert.doesNotMatch(contextBlock({ id: 's', startedAt: at }, [], config), /Fights run/);
+});
+
+test('the monster-turn assistant: what Claude is told, and off unless turned on', async () => {
+  const prepared = encounterFromWiki(
+    {
+      ...WIKI,
+      tactics: 'The captain fights from behind the bandits.',
+      creatures: WIKI.creatures.map((c) => (c.name === 'Bandit Captain' ? { ...c, speed: { walk: 30 }, actions: [{ name: 'Scimitar', kind: 'action', desc: 'Melee Attack Roll: +5, reach 5 ft.' }, { name: 'Parry', kind: 'reaction', desc: 'Adds 2 to its AC.' }] } : c)),
+    },
+    'e1',
+    0,
+  );
+  const s = run(prepared, [{ type: 'damage', id: 'aria', amount: 10 }]);
+  const { system, user } = turnPrompt(s, 'bandit-captain');
+  assert.match(system, /Don't roll dice/);
+  assert.match(user, /Bandit Captain's turn/);
+  assert.match(user, /Speed: walk 30 ft/);
+  assert.match(user, /Action — Scimitar: Melee Attack Roll/);
+  assert.match(user, /Reaction — Parry/);
+  assert.match(user, /- Aria: HP 18\/28; AC 16 — 40 ft away/);
+  assert.match(user, /- Bandit 1 \(hidden from the players\)/);
+  assert.match(user, /tactics notes\n\nThe captain fights from behind the bandits\./);
+  assert.throws(() => turnPrompt(s, 'aria'), /Players run their own/);
+
+  const root = mkdtempSync(join(tmpdir(), 'advisor-'));
+  writeFileSync(join(root, 'config.yaml'), '{}\n');
+  const configStore = new ConfigStore(join(root, 'config.yaml'));
+  const store = new EncounterStore(join(root, 'data'), deps(), () => {});
+  store.start(s);
+  const asked: string[] = [];
+  const turnAdvisor = { suggest: async (p: { user: string }) => (asked.push(p.user), { suggestion: 'Falls back behind the cart and attacks Aria.', action: 'Scimitar', target: 'Aria' }) };
+  const api = createApi({ password: 'pw', dataDir: join(root, 'data'), configStore, jobs: new JobRunner(async () => {}), encounters: store, turnAdvisor });
+  const suggest = () => api.request('/encounter/suggest', { method: 'POST', headers: { Authorization: 'Bearer pw', 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'bandit-captain' }) });
+
+  const off = await suggest();
+  assert.equal(off.status, 409);
+  assert.match(((await off.json()) as { error: string }).error, /turn them on under Settings → Encounters/);
+  writeFileSync(join(root, 'config.yaml'), 'encounters:\n  assistant: true\n');
+  const on = await suggest();
+  assert.deepEqual(await on.json(), { suggestion: 'Falls back behind the cart and attacks Aria.', action: 'Scimitar', target: 'Aria' });
+  assert.equal(asked.length, 1);
+  assert.equal(store.current()!.combatants.find((c) => c.id === 'aria')!.hp, 18, 'a suggestion changes nothing');
 });
