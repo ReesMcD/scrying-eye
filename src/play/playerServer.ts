@@ -25,6 +25,7 @@ import { playerView } from './view.js';
  *   GET  /p/:code/events          the same, live (server-sent events)
  *   POST /p/:code/join            { combatantId | null } → { token }  (one device per PC)
  *   POST /p/:code/act             a PlayerRequest on your own PC (or moving any PC)
+ *   PUT  /p/:code/mini            { mini }: your own character's paper mini, kept for next time
  *   GET  /p/:code/art             the map's pictures (from the DM's art folder), if any
  *   GET  /p/:code/art/:id         one of those pictures, and only those
  *   GET  /mini/:token             a player's page for their character's paper mini
@@ -187,6 +188,26 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
       return c.json(view(store.playerAct(code, token, request), found.player.combatantId));
     } catch (err) {
       if (err instanceof EncounterError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
+
+  app.put('/p/:code/mini', async (c) => {
+    const code = c.req.param('code');
+    if (!store.isOpen(code)) return gone(c);
+    const token = bearer(c);
+    const found = token ? store.player(code, token) : null;
+    if (!found) return c.json({ error: 'Join again' }, 401);
+    const mine = found.state.combatants.find((x) => x.id === found.player.combatantId && x.kind === 'pc');
+    if (!mine) return c.json({ error: 'Pick your character first' }, 400);
+    if (!opts.minis) return c.json({ error: 'Minis are off on this table' }, 404);
+    const body = (await c.req.json().catch(() => null)) as { mini?: unknown } | null;
+    if (!body || !('mini' in body)) return c.json({ error: 'Bad request' }, 400);
+    try {
+      opts.minis.setCharacterMini(mine.name, body.mini);
+      return c.json(view(store.current()!, mine.id));
+    } catch (err) {
+      if (err instanceof MiniError || err instanceof MiniStoreError) return c.json({ error: err.message }, 400);
       throw err;
     }
   });

@@ -213,3 +213,41 @@ test('before a fight starts, every token on the players’ map still stands as i
   assert.deepEqual(info['t-aria']?.mini, { ancestry: 'elf' });
   assert.equal(info['t-thing']?.mini?.ancestry, 'skeleton');
 });
+
+test('a character saved from an encounter goes on the roster’s entry, or is kept as its own', () => {
+  const { minis } = store();
+  assert.equal(minis.setCharacterMini('aria', { ancestry: 'elf' }).id, 'pc-aria', 'matched to the roster by name');
+  const wren = minis.setCharacterMini('Wren', { ancestry: 'halfling' });
+  assert.match(wren.id, /^player-/);
+  minis.add('Goblin', 'monster');
+  assert.deepEqual(minis.list().map((f) => f.name), ['Aria', 'Brom', 'Wren', 'Goblin'], 'with the party, before NPCs and monsters');
+  assert.equal(minis.setCharacterMini('wren', { ancestry: 'gnome' }).id, wren.id, 'next time it updates the same one');
+  assert.ok(minis.newLink(wren.id), 'and can get a player link too');
+});
+
+test('in an encounter, a player saves their own character’s mini, which is asked for until they do', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minis-play-'));
+  const web = join(dir, 'web');
+  mkdirSync(web, { recursive: true });
+  writeFileSync(join(web, 'play.html'), '<!doctype html><title>play</title>');
+  const minis = new MiniStore(dir, () => ROSTER, () => {});
+  const encounters = new EncounterStore(dir, undefined, () => {});
+  const code = encounters.start(encounterWithMap()).join!.code;
+  const app = playerApp(encounters, { webDist: web, minis });
+  const call = (path: string, method: string, body?: unknown, token?: string) =>
+    app.request(path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+
+  const joined = (await (await call(`/p/${code}/join`, 'POST', { combatantId: 'aria' })).json()) as { token: string; view: PlayerView };
+  assert.equal(joined.view.myMini, null, 'no mini yet: the page offers to make one');
+  const saved = await call(`/p/${code}/mini`, 'PUT', { mini: { ancestry: 'elf', weapon: 'bow' } }, joined.token);
+  assert.equal(saved.status, 200);
+  const view = (await saved.json()) as PlayerView;
+  assert.deepEqual(view.myMini, { ancestry: 'elf', weapon: 'bow' });
+  assert.deepEqual(view.minis['t-aria'], { ancestry: 'elf', weapon: 'bow' }, 'and they stand as it on the map');
+  assert.deepEqual(minis.list()[0]!.mini, { ancestry: 'elf', weapon: 'bow' }, 'kept on Aria for next time');
+
+  assert.equal((await call(`/p/${code}/mini`, 'PUT', { mini: { weapon: 'laser' } }, joined.token)).status, 400);
+  assert.equal((await call(`/p/${code}/mini`, 'PUT', { mini: {} })).status, 401, 'needs to have joined');
+  const guest = (await (await call(`/p/${code}/join`, 'POST', { combatantId: null })).json()) as { token: string };
+  assert.equal((await call(`/p/${code}/mini`, 'PUT', { mini: {} }, guest.token)).status, 400, 'a guest has no character');
+});

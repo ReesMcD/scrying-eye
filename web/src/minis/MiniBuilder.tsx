@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BEARDS, colour, HAIR, HEADGEAR, OFFHAND, OUTFITS, renderMini, resolveMini, WEAPONS, ANCESTRIES, miniForCreature, type Mini, type MiniSpec } from '../../../src/shared/minis';
+import { BEARDS, colour, HAIR, HEADGEAR, OFFHAND, OUTFITS, renderMini, resolveMini, STARTER_MINIS, WEAPONS, ANCESTRIES, miniForCreature, type Mini, type MiniSpec } from '../../../src/shared/minis';
 import './minis.css';
 
 /**
- * The paper mini builder, shared by the DM's Minis page and a player's link: pick the parts, see
- * the mini next to a human for scale, save. Nothing is saved until Save.
+ * The paper mini builder, shared by the DM's Minis page, a player's link and the encounter page:
+ * start from a ready-made figure or from scratch, pick the parts, see the mini next to a human for
+ * scale, save. Nothing is saved until Save.
  */
 
 const SKINS = ['skin-pale', 'skin-light', 'skin-tan', 'skin-brown', 'skin-deep', 'skin-green', 'skin-grey-green', 'skin-red', 'skin-blue', 'skin-bone', 'scales-red', 'scales-bronze', 'scales-green', 'scales-blue', 'scales-black', 'scales-white', 'scales-gold'];
@@ -103,6 +104,16 @@ export function MiniBuilder({ name, value, onSave }: { name: string; value: Mini
       </div>
 
       <div className="mini-parts">
+        <fieldset className="mini-group">
+          <legend>Start from a ready-made one</legend>
+          <div className="chips">
+            {STARTER_MINIS.map((starter) => (
+              <button key={starter.name} type="button" className="chip" aria-pressed={JSON.stringify(draft) === JSON.stringify(starter.mini)} onClick={() => change(starter.mini)}>
+                {starter.name}
+              </button>
+            ))}
+          </div>
+        </fieldset>
         {GROUPS.map((g) => {
           const current = g.get(resolved);
           return (

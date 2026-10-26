@@ -815,6 +815,8 @@ export interface PlayerView {
   myInitiative: number | null;
   /** My AC (only mine). */
   myAc: number | null;
+  /** My character's paper mini, or null while they haven't made one (the page offers to). */
+  myMini: MiniSpec | null;
   /** The map without hidden tokens or DM notes, if the encounter has one. */
   map: BattleMap | null;
   /** Visible combatant id → its token on the map. */

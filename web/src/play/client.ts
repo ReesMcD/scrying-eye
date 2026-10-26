@@ -1,4 +1,4 @@
-import type { ArtPlan, PlayerRequest, PlayerView } from '../../../src/shared/types';
+import type { ArtPlan, MiniSpec, PlayerRequest, PlayerView } from '../../../src/shared/types';
 
 /** The join code is the last part of /play/<code>. */
 export const code = decodeURIComponent(window.location.pathname.split('/').filter(Boolean).at(-1) ?? '');
@@ -64,6 +64,8 @@ export const play = {
   },
   join: (combatantId: string | null) => call<{ token: string; view: PlayerView }>('/join', { method: 'POST', body: JSON.stringify({ combatantId }) }),
   act: (request: PlayerRequest) => call<PlayerView>('/act', { method: 'POST', body: JSON.stringify(request) }),
+  /** My character's paper mini (null: back to the default figure), kept for next time. */
+  saveMini: (mini: MiniSpec | null) => call<PlayerView>('/mini', { method: 'PUT', body: JSON.stringify({ mini }) }),
 };
 
 /**

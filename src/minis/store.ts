@@ -8,7 +8,8 @@ import type { MiniFigure, MiniKind } from '../shared/types.js';
 
 /**
  * The table's paper minis, kept in <data>/minis.json. The party's characters come from the roster
- * (Settings → Campaigns) and are always listed; NPCs and monsters are the ones the DM adds. A
+ * (Settings → Campaigns) and are always listed, with any character a player saved a mini for from
+ * an encounter that isn't on the roster; NPCs and monsters are the ones the DM adds. A
  * character can have a private link that lets its player edit its mini, and nothing else.
  * Emits "change" after every save, so open maps redraw their standees.
  */
@@ -38,6 +39,8 @@ interface Saved {
 }
 
 const PARTY = 'pc-';
+/** A party character that isn't on the roster, saved from an encounter. */
+const PLAYER = 'player-';
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 export class MiniStore extends EventEmitter {
@@ -73,17 +76,37 @@ export class MiniStore extends EventEmitter {
     this.emit('change');
   }
 
-  /** The party first (in roster order), then NPCs and monsters by name. */
+  /** The party first (the roster in order, then characters saved from encounters), then NPCs and monsters by name. */
   list(): MiniFigure[] {
     const party = this.roster().map((c): MiniFigure => {
       const s = this.saved[PARTY + c.id];
       return { id: PARTY + c.id, name: c.name, kind: 'pc', campaign: c.campaign ?? null, mini: s?.mini ?? null, hasLink: !!s?.link };
     });
-    const others = Object.entries(this.saved)
+    const byName = (a: MiniFigure, b: MiniFigure) => a.name.localeCompare(b.name);
+    const saved = Object.entries(this.saved)
       .filter(([id]) => !id.startsWith(PARTY))
-      .map(([id, s]): MiniFigure => ({ id, name: s.name, kind: s.kind, campaign: null, mini: s.mini, hasLink: false }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return [...party, ...others];
+      .map(([id, s]): MiniFigure => ({ id, name: s.name, kind: s.kind, campaign: null, mini: s.mini, hasLink: !!s.link }));
+    return [...party, ...saved.filter((f) => f.kind === 'pc').sort(byName), ...saved.filter((f) => f.kind !== 'pc').sort(byName)];
+  }
+
+  /** A party character by name (as it appears in an encounter), or null. */
+  character(name: string): MiniFigure | null {
+    return this.list().find((f) => f.kind === 'pc' && nameKey(f.name) === nameKey(name)) ?? null;
+  }
+
+  /**
+   * Saves a party character's mini by name, from a player in an encounter. A character not on the
+   * roster (the wiki's party can differ) is kept as its own, so it's there next time.
+   */
+  setCharacterMini(name: string, mini: unknown): MiniFigure {
+    const found = this.character(name);
+    if (found) return this.setMini(found.id, mini);
+    const clean = name.trim();
+    if (!clean) throw new MiniStoreError('Give it a name');
+    const id = `${PLAYER}${randomBytes(4).toString('hex')}`;
+    this.saved[id] = { name: clean, kind: 'pc', mini: mini === null ? null : readMiniSpec(mini) };
+    this.save();
+    return this.figure(id);
   }
 
   private figure(id: string): MiniFigure {

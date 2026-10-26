@@ -52,6 +52,7 @@ export function playerView(s: EncounterState, me: string | null, miniFor: (name:
     party: s.combatants.filter(pc).map((c) => ({ id: c.id, name: c.name, taken: taken.has(c.id) })),
     myInitiative: mine?.initiative ?? null,
     myAc: mine?.ac ?? null,
+    myMini: mine?.kind === 'pc' ? miniFor(mine.name) : null,
     map,
     tokens: Object.fromEntries(order.filter((c) => c.tokenId).map((c) => [c.id, c.tokenId!])),
     fog: s.map && s.fog ? s.fog.revealed : null,

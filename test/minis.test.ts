@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ANCESTRIES, MiniError, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, WEAPONS } from '../src/shared/minis/index.js';
+import { ANCESTRIES, MiniError, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
 
 test('a page’s mini block keeps the parts it knows and drops the rest', () => {
   const spec = readMiniSpec({ ancestry: 'dwarf', beard: 'forked', hair: { colour: 'hair-copper' }, cloak: 'none', sparkles: true });
@@ -79,4 +79,8 @@ test('a creature with nothing to go on gets a figure varied by its name, the sam
   const names = ['Arwen', 'Borin', 'Celeste', 'Dorian', 'Elspeth', 'Fenwick'];
   const looks = new Set(names.map((name) => JSON.stringify(miniForCreature({ name }))));
   assert.ok(looks.size >= 5, 'a party without minis doesn’t look alike');
+});
+
+test('every starter figure is a valid mini', () => {
+  for (const { name, mini } of STARTER_MINIS) assert.deepEqual(readMiniSpec(mini), mini, name);
 });

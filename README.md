@@ -552,6 +552,9 @@ What's in it:
   house style ([docs/minis-style-guide.md](docs/minis-style-guide.md)).
   - The party comes from **Campaigns**; add NPCs and monsters by name. A token finds its mini by
     name ("Goblin 2" uses "Goblin"); one without a mini gets a figure from its name and stat block.
+  - **In an encounter:** after picking their character, a player without a mini is asked to pick a
+    ready-made one or build their own (or "Not now"); it's saved to that character for every
+    encounter. **My mini** changes it later. A character not in Campaigns is kept as its own.
   - **Make a player link** gives a character's player a private page to build their own mini,
     any time, through the same public address as the players' link. A new link turns the old one off.
 
