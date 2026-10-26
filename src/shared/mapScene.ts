@@ -14,7 +14,11 @@ export const WALL_HEIGHT = 2;
 const DOOR_HEIGHT = 1.6;
 const DOOR_THICKNESS = 0.18;
 
-export type BoxPart = 'wall' | 'secret' | 'door' | 'lintel' | 'elevation' | 'cover' | 'object';
+/**
+ * `wall`: built walls; `rock`: natural rock faces (`asset: "rock"`, caves); `mass`: solid rock
+ * that no room or corridor touches (a dungeon plan's fill), merged into big blocks.
+ */
+export type BoxPart = 'wall' | 'rock' | 'mass' | 'secret' | 'door' | 'lintel' | 'elevation' | 'cover' | 'object' | 'chest' | 'altar';
 
 /** A box standing on the map: x/z its corner, w/d its size, y its base, h its height. */
 export interface SceneBox {
@@ -30,7 +34,7 @@ export interface SceneBox {
 }
 
 export interface SceneProp {
-  kind: 'tree' | 'bush' | 'pillar' | 'rock';
+  kind: 'tree' | 'bush' | 'pillar' | 'statue' | 'rock' | 'stairs';
   /** The centre of its square. */
   x: number;
   z: number;
@@ -38,6 +42,8 @@ export interface SceneProp {
   h: number;
   /** A per-square number in [0, 1), so trees and rocks don't all look alike. */
   seed: number;
+  /** Stairs: the way they rise, in radians about the up axis (0 = toward -z, the map's top). */
+  facing?: number;
 }
 
 export interface SceneWater {
@@ -66,6 +72,8 @@ export interface MapScene {
   water: SceneWater[];
   /** The ground level at each square ("x,y" → height), where it isn't 0. */
   levels: Map<string, number>;
+  /** The part worth framing: everything but solid rock (the whole map when there's none). */
+  open: { x: number; z: number; w: number; d: number };
 }
 
 const key = (x: number, y: number) => `${x},${y}`;
@@ -79,7 +87,8 @@ function propKind(t: Terrain): SceneProp['kind'] | null {
   const words = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
   if (/\b(tree|trees|oak|pine|willow|forest)\b/.test(words)) return 'tree';
   if (/\b(bush|bushes|shrub|reeds|hedge)\b/.test(words)) return 'bush';
-  if (/\b(pillar|column|statue|obelisk|post)\b/.test(words)) return 'pillar';
+  if (/\b(statue|idol|obelisk)\b/.test(words)) return 'statue';
+  if (/\b(pillar|column|post)\b/.test(words)) return 'pillar';
   if (/\b(rock|rocks|boulder|boulders|stone|stones)\b/.test(words)) return 'rock';
   return null;
 }
@@ -109,13 +118,26 @@ export function buildScene(map: BattleMap): MapScene {
 
   const solid = new Set<string>();
   for (const t of map.terrain) if (t.kind === 'wall' || t.kind === 'door') for (const [x, y] of cellsOf(t, map.width, map.height)) solid.add(key(x, y));
+  // Rock with nothing open next to it (off the map counts as rock): only its top is ever seen.
+  const buried = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (x + dx >= 0 && y + dy >= 0 && x + dx < map.width && y + dy < map.height && !solid.has(key(x + dx, y + dy))) return false;
+    return true;
+  };
+  const mass: Array<[number, number, number]> = [];
 
   for (const t of map.terrain) {
     const cells = cellsOf(t, map.width, map.height);
     switch (t.kind) {
       case 'wall': {
         const h = feet(t.height, WALL_HEIGHT);
-        for (const [x, y] of cells) boxes.push({ part: t.secret ? 'secret' : 'wall', x, z: y, w: 1, d: 1, y: level(x, y), h });
+        const natural = /\b(rock|cave|cliff|stone)\b/i.test(t.asset ?? '');
+        for (const [x, y] of cells) {
+          if (!t.secret && buried(x, y)) {
+            mass.push([x, y, h]);
+            continue;
+          }
+          boxes.push({ part: t.secret ? 'secret' : natural ? 'rock' : 'wall', x, z: y, w: 1, d: 1, y: level(x, y), h });
+        }
         break;
       }
       case 'door':
@@ -137,21 +159,35 @@ export function buildScene(map: BattleMap): MapScene {
       case 'cover': {
         // Half cover: about waist high; three-quarters: about chest high.
         const h = t.cover === 'three-quarters' ? 1 : 0.6;
-        for (const [x, y] of cells) boxes.push({ part: 'cover', x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h });
+        // Barrels and crates are wood; sarcophagi, tombs and low walls are stone.
+        const part = /\b(sarcophag\w*|coffins?|tombs?|stone|statue|wall|altar)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? 'altar' : 'cover';
+        for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h });
         break;
       }
       case 'object': {
         const kind = propKind(t);
         for (const [x, y] of cells) {
           const seed = seedOf(x, y);
+          const what = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
           if (kind === 'tree') props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, 3 + seed), seed });
-          else if (kind) props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, kind === 'pillar' ? WALL_HEIGHT : kind === 'bush' ? 0.6 : 0.7), seed });
+          else if (kind) props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, kind === 'pillar' ? WALL_HEIGHT : kind === 'statue' ? 1.5 : kind === 'bush' ? 0.6 : 0.7), seed });
+          else if (/\b(chest|coffer|strongbox)\b/.test(what)) boxes.push({ part: 'chest', x: x + 0.22, z: y + 0.3, w: 0.56, d: 0.4, y: level(x, y), h: feet(t.height, 0.42) });
+          else if (/\b(altar|table|desk|bench)\b/.test(what)) boxes.push({ part: 'altar', x: x + 0.06, z: y + 0.18, w: 0.88, d: 0.64, y: level(x, y), h: feet(t.height, 0.65) });
           else boxes.push({ part: 'object', x: x + 0.08, z: y + 0.08, w: 0.84, d: 0.84, y: level(x, y), h: feet(t.height, 1) });
         }
         break;
       }
       case 'water':
         for (const [x, y] of cells) water.push({ x, z: y, deep: t.depth === 'deep' });
+        break;
+      case 'floor':
+        // The way in or out of a dungeon.
+        if (/\bstairs?\b|\bsteps\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`))
+          for (const [x, y] of cells) {
+            // They rise into the wall beside them: the way out.
+            const side = ([[0, -1, 0], [1, 0, -Math.PI / 2], [0, 1, Math.PI], [-1, 0, Math.PI / 2]] as const).find(([dx, dy]) => walled(map, solid, x + dx, y + dy));
+            props.push({ kind: 'stairs', x: x + 0.5, z: y + 0.5, y: level(x, y), h: 0.6, seed: seedOf(x, y), facing: side?.[2] ?? 0 });
+          }
         break;
       case 'difficult':
         // Rubble and boulders read as stones on the ground; other difficult ground stays painted.
@@ -162,7 +198,50 @@ export function buildScene(map: BattleMap): MapScene {
         break;
     }
   }
-  return { width: map.width, height: map.height, boxes, props, water, levels };
+  boxes.push(...mergeMass(mass));
+  return { width: map.width, height: map.height, boxes, props, water, levels, open: openArea(map.width, map.height, new Set(mass.map(([x, y]) => key(x, y)))) };
+}
+
+/** Buried rock as few big blocks (per height): rows of squares, then rows stacked when they line up. */
+function mergeMass(cells: Array<[number, number, number]>): SceneBox[] {
+  const byRow = new Map<string, number[]>();
+  for (const [x, y, h] of cells) byRow.set(`${y}|${h}`, [...(byRow.get(`${y}|${h}`) ?? []), x]);
+  const runs: SceneBox[] = [];
+  for (const [k, xs] of byRow) {
+    const [y, h] = k.split('|').map(Number) as [number, number];
+    xs.sort((a, b) => a - b);
+    let start = xs[0]!;
+    for (let i = 1; i <= xs.length; i++) {
+      if (i < xs.length && xs[i] === xs[i - 1]! + 1) continue;
+      runs.push({ part: 'mass', x: start, z: y, w: xs[i - 1]! - start + 1, d: 1, y: 0, h });
+      if (i < xs.length) start = xs[i]!;
+    }
+  }
+  // Stack identical runs on consecutive rows.
+  runs.sort((a, b) => a.x - b.x || a.w - b.w || a.h - b.h || a.z - b.z);
+  const out: SceneBox[] = [];
+  for (const r of runs) {
+    const last = out.at(-1);
+    if (last && last.x === r.x && last.w === r.w && last.h === r.h && last.z + last.d === r.z) last.d += 1;
+    else out.push({ ...r });
+  }
+  return out;
+}
+
+/** The smallest rectangle holding every square that isn't buried rock, one square of margin around it. */
+function openArea(width: number, height: number, buried: ReadonlySet<string>): MapScene['open'] {
+  let [x0, z0, x1, z1] = [width, height, -1, -1];
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      if (!buried.has(key(x, y))) {
+        x0 = Math.min(x0, x);
+        z0 = Math.min(z0, y);
+        x1 = Math.max(x1, x);
+        z1 = Math.max(z1, y);
+      }
+  if (x1 < 0) return { x: 0, z: 0, w: width, d: height };
+  const [ax, az] = [Math.max(0, x0 - 1), Math.max(0, z0 - 1)];
+  return { x: ax, z: az, w: Math.min(width, x1 + 2) - ax, d: Math.min(height, z1 + 2) - az };
 }
 
 /** Where a token stands: its footprint's centre, on the highest ground under it. */

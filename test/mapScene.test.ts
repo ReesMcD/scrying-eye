@@ -76,3 +76,42 @@ test('squares under a point, and a key that ignores moving tokens', () => {
   assert.equal(sceneKey(moved), sceneKey(MAP));
   assert.notEqual(sceneKey({ ...MAP, terrain: MAP.terrain.slice(1) }), sceneKey(MAP));
 });
+
+test('a dungeon plan: buried rock becomes a few big blocks, room walls stay, and the camera frames the dug-out part', () => {
+  // 20×12 of solid rock with one 4×3 room carved out at (5, 4), stairs on its west side, a statue, a chest and an altar.
+  const plan: BattleMap = {
+    v: 1,
+    width: 20,
+    height: 12,
+    ground: 'rock',
+    terrain: [
+      { kind: 'wall', rect: [0, 0, 20, 4], asset: 'wall' },
+      { kind: 'wall', rect: [0, 7, 20, 5], asset: 'wall' },
+      { kind: 'wall', rect: [0, 4, 5, 3], asset: 'rock' },
+      { kind: 'wall', rect: [9, 4, 11, 3], asset: 'wall' },
+      { kind: 'floor', rect: [5, 4, 4, 3], ground: 'stone' },
+      { kind: 'floor', cells: [[5, 5]], asset: 'stairs' },
+      { kind: 'object', cells: [[7, 4]], asset: 'statue' },
+      { kind: 'object', cells: [[8, 6]], asset: 'chest' },
+      { kind: 'object', cells: [[6, 6]], asset: 'altar' },
+      { kind: 'cover', cells: [[7, 6]], asset: 'sarcophagus' },
+    ],
+    tokens: [],
+    notes: [],
+  };
+  const scene = buildScene(plan);
+  const parts = (p: string) => scene.boxes.filter((b) => b.part === p);
+  // The ring of walls around the room (6×5 minus the room's 4×3) stays as squares; the rest is merged.
+  assert.equal(parts('wall').length + parts('rock').length, 6 * 5 - 4 * 3);
+  assert.equal(parts('rock').length, 3, 'the natural rock face west of the room');
+  const buried = 20 * 12 - 6 * 5;
+  assert.equal(parts('mass').reduce((n, b) => n + b.w * b.d, 0), buried, 'every buried square once');
+  assert.ok(parts('mass').length <= 6, `merged into a few blocks (got ${parts('mass').length})`);
+  assert.deepEqual(scene.open, { x: 3, z: 2, w: 8, d: 7 }, 'the room and its walls, a square of margin around');
+
+  const stairs = scene.props.find((p) => p.kind === 'stairs')!;
+  assert.equal(stairs.facing, Math.PI / 2, 'they rise west, into the rock they lead out through');
+  assert.deepEqual(scene.props.map((p) => p.kind).sort(), ['stairs', 'statue']);
+  assert.equal(parts('chest').length, 1);
+  assert.equal(parts('altar').length, 2, 'the altar, and the sarcophagus in stone');
+});
