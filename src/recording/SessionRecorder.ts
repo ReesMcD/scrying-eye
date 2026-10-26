@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { EndBehaviorType, VoiceConnectionStatus, entersState, joinVoiceChannel, type AudioPlayer, type VoiceConnection } from '@discordjs/voice';
 import type { Guild, VoiceBasedChannel } from 'discord.js';
-import { paths, readJson, writeJson, type Participant, type SessionInfo } from '../session/layout.js';
+import { paths, readJson, writeJson, type Participant, type RollNote, type SessionInfo } from '../session/layout.js';
 import type { RecordingStatus } from '../bot/types.js';
 import { skipReason, type RecordFilterConfig } from './filters.js';
 import { ReconnectBudget } from './reconnect.js';
@@ -83,6 +83,11 @@ export class SessionRecorder extends EventEmitter {
       skipped: [...this.skipped].map(([id, s]) => ({ id, ...s })),
       reconnects: this.reconnects.total,
     };
+  }
+
+  /** Notes a /roll so the transcript can show it where it happened. */
+  noteRoll(note: RollNote): void {
+    appendFileSync(paths.rolls(this.opts.sessionDir), JSON.stringify(note) + '\n');
   }
 
   async start(): Promise<void> {

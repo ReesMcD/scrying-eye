@@ -3,7 +3,7 @@ import { writeFileAtomic } from '../util/files.js';
 import { join } from 'node:path';
 import { campaignFor, charactersByAccount, sharedAccounts, speakerNames } from '../config/roster.js';
 import type { Config } from '../config/schema.js';
-import { paths, readJson, readParticipants, readSessionInfo, writeJson, type Participant, type SessionInfo } from '../session/layout.js';
+import { paths, readJson, readParticipants, readRolls, readSessionInfo, writeJson, type Participant, type RollNote, type SessionInfo } from '../session/layout.js';
 import type { SpeakerTranscript } from '../transcription/transcribeSession.js';
 import type { SpeakerSegment } from '../transcription/remap.js';
 import type { TranscriptLine } from '../shared/types.js';
@@ -97,6 +97,25 @@ export function mergeSegments(bySpeaker: ReadonlyMap<string, readonly SpeakerSeg
   return joinLines(lines, opts);
 }
 
+/** Puts /roll results among the spoken lines, named like the roller's speech: "[roll] Longsword: 1d20+5 = 22". */
+export function withRolls(lines: readonly TranscriptLine[], rolls: readonly RollNote[], opts: Pick<MergeOptions, 'sessionStartMs' | 'aliases' | 'participants' | 'characters'>): TranscriptLine[] {
+  if (!rolls.length) return [...lines];
+  const rollLines = rolls.map((r): TranscriptLine => {
+    const person = speakerName(r.userId, opts.aliases, opts.participants);
+    const character = opts.characters?.[r.userId];
+    return {
+      userId: r.userId,
+      speaker: character ?? person,
+      ...(character && character !== person ? { player: person } : {}),
+      offsetMs: r.at - opts.sessionStartMs,
+      startMs: r.at,
+      endMs: r.at,
+      text: `[roll] ${r.text}`,
+    };
+  });
+  return [...lines, ...rollLines].sort((a, b) => a.startMs - b.startMs);
+}
+
 function formatDate(ms: number, timeZone: string | undefined): string {
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
@@ -141,15 +160,19 @@ export function mergeSession(sessionDir: string, config: Config): MergeResult {
   }
   const session = readSessionInfo(sessionDir);
   const campaign = campaignFor(config, session);
-  const lines = mergeSegments(bySpeaker, {
+  const naming = {
     sessionStartMs: session.startedAt,
     aliases: speakerNames(config),
     participants: readParticipants(sessionDir),
     ...(campaign ? { characters: charactersByAccount(config, campaign) } : {}),
+  };
+  const spoken = mergeSegments(bySpeaker, {
+    ...naming,
     mergeGapMs: config.transcript.merge_gap_seconds * 1000,
     maxLineMs: config.transcript.max_line_seconds * 1000,
     noJoin: new Set(sharedAccounts(config).keys()),
   });
+  const lines = withRolls(spoken, readRolls(sessionDir), naming);
   writeJson(paths.segments(sessionDir), { session, lines });
   const file = paths.transcript(sessionDir);
   writeFileAtomic(file, renderMarkdown(session, lines, config.transcript.timezone));
