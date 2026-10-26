@@ -154,6 +154,7 @@ export function encounterFromWiki(w: WikiEncounter, id: string, now: number): En
         ...(typeof p.dex === 'number' ? { dex: p.dex } : {}),
         // The sheet's own initiative bonus wins over one worked out from Dexterity (feats, Alert, items).
         ...(typeof p.initiative_bonus === 'number' ? { initiativeBonus: p.initiative_bonus } : {}),
+        speed: p.speed,
         ...(t ? { tokenId: t.id } : {}),
       }),
     );

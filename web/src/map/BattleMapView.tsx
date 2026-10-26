@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { canPlace, cellsOf, distanceFeet, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken } from '../../../src/shared/battlemap';
+import { cellsOf, onBoard, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken } from '../../../src/shared/battlemap';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { ArtPlan } from '../../../src/shared/types';
 import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintTerrain, palette, type Overlay, type Palette } from './paint';
+import { moveGuide } from './moveGuide';
 import './map.css';
 
 export type { Overlay };
@@ -19,6 +20,12 @@ export interface TokenInfo {
   hidden?: boolean;
   /** This device's own token. */
   mine?: boolean;
+  /** During a fight: feet moved since its turn started. */
+  moved?: number;
+  /** Walking speed in feet, when known. */
+  speed?: number | null;
+  /** Two foes on opposite sides of it (the optional flanking rule). */
+  flanked?: boolean;
 }
 
 /** What both map views (2D and 3D) take. */
@@ -168,13 +175,14 @@ export function BattleMapView(props: MapViewProps) {
       paintToken(ctx, t, t.at, s, ti, colors, { selected: selected === t.id });
     }
 
-    // The token being dragged: where it would land, how far, and whether it can.
+    // The token being dragged: where it would land, how far, and anything odd about the square.
     if (d?.moved) {
       const t = map.tokens.find((x) => x.id === d.tokenId);
       if (t) {
-        const ok = canPlace(map, t.id, t.size, d.to).ok;
+        const guide = moveGuide(map, t, d.from, d.to, info[t.id]);
+        const ok = !guide.warning;
         const half = (SIZE_SQUARES[t.size] * s) / 2;
-        ctx.strokeStyle = ok ? colors.accent : colors.bad;
+        ctx.strokeStyle = ok ? colors.accent : colors.warn;
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
@@ -182,8 +190,8 @@ export function BattleMapView(props: MapViewProps) {
         ctx.lineTo(d.to[0] * s + half, d.to[1] * s + half);
         ctx.stroke();
         ctx.setLineDash([]);
-        paintToken(ctx, t, d.to, s, info[t.id], colors, { invalid: !ok });
-        label(ctx, `${distanceFeet(d.from, d.to)} ft`, d.to[0] * s + half, d.to[1] * s - 16, colors, ok ? undefined : colors.bad);
+        paintToken(ctx, t, d.to, s, info[t.id], colors, { dragging: true });
+        label(ctx, guide.warning ? `${guide.text} · ${guide.warning}` : guide.text, d.to[0] * s + half, d.to[1] * s - 16, colors, ok ? undefined : colors.warn);
       }
     }
   };
@@ -302,7 +310,9 @@ export function BattleMapView(props: MapViewProps) {
     if (d && d.pointer === e.pointerId) {
       drag.current = null;
       if (d.moved) {
-        if (d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) latest.current.onMove(d.tokenId, d.to);
+        const t = latest.current.map.tokens.find((x) => x.id === d.tokenId);
+        // Dropped off the board, it goes back where it was.
+        if (t && (d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) && onBoard(latest.current.map, t.size, d.to)) latest.current.onMove(d.tokenId, d.to);
       } else if (p) tap(p);
       redraw();
       return;
@@ -370,7 +380,7 @@ export function BattleMapView(props: MapViewProps) {
 
 const centre = (el: HTMLElement | null): [number, number] => [(el?.clientWidth ?? 0) / 2, (el?.clientHeight ?? 0) / 2];
 
-function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: number, info: TokenInfo | undefined, p: Palette, o: { faded?: boolean; selected?: boolean; invalid?: boolean }) {
+function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: number, info: TokenInfo | undefined, p: Palette, o: { faded?: boolean; selected?: boolean; dragging?: boolean }) {
   const n = SIZE_SQUARES[t.size];
   const r = (n * s) / 2;
   const cx = at[0] * s + r;
@@ -385,7 +395,7 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
     ctx.stroke();
   }
-  ctx.fillStyle = o.invalid ? p.bad : fill;
+  ctx.fillStyle = fill;
   ctx.beginPath();
   ctx.arc(cx, cy, Math.max(4, r - Math.max(3, s * 0.12)), 0, Math.PI * 2);
   ctx.fill();
@@ -423,5 +433,9 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.fillRect(bx, by, bw * frac, Math.max(3, s * 0.09));
   }
   ctx.restore();
+  // Table aids, when there's room: flanked above, how far whoever's turn it is has moved below.
+  if (s * n < 18 || o.faded || o.dragging) return;
+  if (info?.flanked) label(ctx, 'Flanked', cx, at[1] * s - 9, p, p.warn);
+  if (info?.current && info.moved) label(ctx, `${info.moved} ft${info.speed ? ` of ${info.speed}` : ''}`, cx, at[1] * s + n * s + 11, p);
 }
 

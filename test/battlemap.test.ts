@@ -61,7 +61,9 @@ test('a token stands only inside the grid, off walls, closed doors, deep water a
   assert.equal((canPlace(m, 'ogre', 'large', [7, 3]) as { reason: string }).reason, 'That’s off the map');
   assert.equal((canPlace(m, 'ari', 'medium', [1.5, 2] as never) as { reason: string }).reason, 'That’s off the map');
   assert.deepEqual(moveToken(m, 'ari', [2, 2]).tokens[0]!.at, [2, 2]);
-  assert.throws(() => moveToken(m, 'ari', [3, 0]), /in the way/);
+  assert.deepEqual(moveToken(m, 'ari', [3, 0]).tokens[0]!.at, [3, 0], 'a move goes anywhere on the board: the DM rules on it');
+  assert.deepEqual(moveToken(m, 'ari', [7, 2]).tokens[0]!.at, [7, 2], 'onto someone too');
+  assert.throws(() => moveToken(m, 'ari', [8, 2]), /off the map/);
   assert.throws(() => moveToken(m, 'nobody', [2, 2]), /isn’t on the map/);
   assert.deepEqual(nearestFree(m, 'new', 'medium', [6, 1]), [5, 1], 'next to the ogre');
   assert.equal(tokenAt(m, [7, 2])?.id, 'ogre');
@@ -118,7 +120,7 @@ test('the tracker moves tokens, places combatants, works doors and terrain, and 
   let s = fight();
   s = applyAction(s, { type: 'move', token: 'ari', at: [2, 2] }, deps);
   assert.deepEqual(s.map!.tokens[0]!.at, [2, 2]);
-  assert.throws(() => applyAction(s, { type: 'move', token: 'ari', at: [0, 0] }, deps), /in the way/);
+  assert.deepEqual(applyAction(s, { type: 'move', token: 'ari', at: [0, 0] }, deps).map!.tokens[0]!.at, [0, 0], 'into a wall, if the DM says so');
   s = applyAction(s, { type: 'place', id: 'bob', at: [2, 2] }, deps);
   assert.equal(s.combatants[2]!.tokenId, 'bob');
   assert.deepEqual(s.map!.tokens.find((t) => t.id === 'bob')!.at, [1, 1], 'next to Ari');
@@ -137,9 +139,37 @@ test('the tracker moves tokens, places combatants, works doors and terrain, and 
   assert.throws(() => applyAction(s, { type: 'newMap', width: 20, height: 15 }, deps), /already has a map/);
 });
 
-test('a player moves only their own token', () => {
+test('a player moves their own token or a friend’s, never a monster’s', () => {
   const s = fight();
   assert.deepEqual(playerAction(s, 'ari', { type: 'move', at: [2, 2] }), { type: 'move', token: 'ari', at: [2, 2] });
   assert.throws(() => playerAction(s, 'bob', { type: 'move', at: [2, 2] }), /not on the map yet/);
+  assert.deepEqual(playerAction(s, 'bob', { type: 'move', token: 'ari', at: [2, 2] }), { type: 'move', token: 'ari', at: [2, 2] }, 'Bob helps Ari along');
+  assert.throws(() => playerAction(s, 'bob', { type: 'move', token: 'ogre', at: [2, 2] }), /Only the DM/);
   assert.throws(() => playerAction(s, null, { type: 'move', at: [2, 2] }), /Pick your character/);
+});
+
+test('in a fight, the board counts how far each token has moved this turn, and players see it', () => {
+  let s = fight();
+  s.map = { ...s.map!, tokens: [...s.map!.tokens, { id: 'bob', name: 'Bob', kind: 'pc', size: 'medium', at: [3, 2] }] };
+  s.combatants[2]!.tokenId = 'bob';
+  s = applyAction(s, { type: 'move', token: 'ari', at: [2, 2] }, deps);
+  assert.equal(s.moved, undefined, 'not counted before the fight starts');
+  for (const id of ['ari', 'ogre', 'bob']) s = applyAction(s, { type: 'initiative', id, value: id === 'ari' ? 20 : id === 'ogre' ? 15 : 10 }, deps);
+  s = applyAction(s, { type: 'begin' }, deps);
+  s = applyAction(s, { type: 'move', token: 'ari', at: [2, 4] }, deps);
+  assert.equal(s.moved!.ari!.feet, 10);
+  s = applyAction(s, { type: 'move', token: 'ari', at: [0, 4] }, deps);
+  assert.equal(s.moved!.ari!.feet, 25, 'the cheap way into difficult ground: a diagonal round it, then one square of it');
+  assert.deepEqual(playerView(s, 'bob').moved, { ari: 25 });
+  s = applyAction(s, { type: 'move', token: 'ari', at: [2, 2] }, deps);
+  assert.equal(s.moved!.ari!.feet, 0, 'back where the turn started: the count starts again');
+  s = applyAction(s, { type: 'move', token: 'ari', at: [3, 3] }, deps);
+  s = applyAction(s, { type: 'next' }, deps);
+  s = applyAction(s, { type: 'next' }, deps);
+  s = applyAction(s, { type: 'move', token: 'bob', at: [3, 4] }, deps);
+  assert.equal(s.moved!.ari!.feet, 5, 'still Ari’s count from her turn');
+  s = applyAction(s, { type: 'next' }, deps);
+  assert.equal(s.moved!.ari, undefined, 'a new turn for Ari');
+  assert.equal(s.moved!.bob!.feet, 10);
+  assert.equal(playerView(s, 'bob').moved.ogre, undefined, 'never a hidden token');
 });

@@ -22,7 +22,7 @@ import { playerView } from './view.js';
  *   GET  /p/:code/view            the encounter as this device may see it
  *   GET  /p/:code/events          the same, live (server-sent events)
  *   POST /p/:code/join            { combatantId | null } → { token }  (one device per PC)
- *   POST /p/:code/act             a PlayerRequest on your own PC
+ *   POST /p/:code/act             a PlayerRequest on your own PC (or moving any PC)
  *   GET  /p/:code/art             the map's pictures (from the DM's art folder), if any
  *   GET  /p/:code/art/:id         one of those pictures, and only those
  *

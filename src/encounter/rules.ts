@@ -1,4 +1,5 @@
-import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell } from '../shared/battlemap.js';
+import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken } from '../shared/battlemap.js';
+import { pathFeet } from '../shared/tableAids.js';
 import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
 import { applyDungeonAction } from './dungeon.js';
@@ -45,7 +46,7 @@ export function newEncounter(id: string, title: string, now: number): EncounterS
 }
 
 /** A combatant with defaults filled in. */
-export function makeCombatant(id: string, input: { name: string; kind?: CombatantKind; ac?: number | null; hp?: number | null; initiativeBonus?: number; dex?: number | null; hidden?: boolean; ref?: string; tokenId?: string; player?: string | null }): Combatant {
+export function makeCombatant(id: string, input: { name: string; kind?: CombatantKind; ac?: number | null; hp?: number | null; initiativeBonus?: number; dex?: number | null; hidden?: boolean; ref?: string; tokenId?: string; player?: string | null; speed?: number | null }): Combatant {
   const name = input.name.trim().slice(0, 60);
   if (!name) throw new EncounterError('A combatant needs a name');
   const hp = wholeOrNull(input.hp, 'HP');
@@ -67,6 +68,7 @@ export function makeCombatant(id: string, input: { name: string; kind?: Combatan
     ...(input.ref ? { ref: input.ref } : {}),
     ...(input.tokenId ? { tokenId: input.tokenId } : {}),
     ...(input.player !== undefined ? { player: input.player } : {}),
+    ...(typeof input.speed === 'number' && input.speed > 0 ? { speed: input.speed } : {}),
   };
 }
 
@@ -178,6 +180,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       if (missing.length) throw new EncounterError(`Still waiting on initiative: ${missing.join(', ')}`);
       if (s.order.length !== s.combatants.length) s.order = sortOrder(s.combatants);
       s.status = 'running';
+      s.moved = {};
       s.round = 1;
       s.turn = s.order[0]!;
       log('Round 1');
@@ -276,9 +279,12 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       log(c.hidden ? `${c.name} hidden` : `${c.name} revealed`);
       break;
     }
-    case 'move':
+    case 'move': {
+      const before = s.map?.tokens.find((t) => t.id === action.token);
       s.map = onMap(s, (m) => moveToken(m, action.token, action.at));
+      if (before && s.status === 'running') trackMove(s, before, action.at);
       break;
+    }
     case 'place': {
       const c = find(action.id);
       const tokenId = c.tokenId ?? uniqueTokenId(s.map, c.id);
@@ -473,7 +479,19 @@ function tick(s: EncounterState, of: string, on: 'start' | 'end', deps: RuleDeps
 }
 
 function startTurn(s: EncounterState, deps: RuleDeps) {
-  if (s.turn) tick(s, s.turn, 'start', deps);
+  if (!s.turn) return;
+  tick(s, s.turn, 'start', deps);
+  // A fresh turn: the movement count starts again.
+  const token = s.combatants.find((c) => c.id === s.turn)?.tokenId;
+  if (token && s.moved) delete s.moved[token];
+}
+
+/** Adds a move to the token's count this turn; back where its turn started, the count is 0. */
+function trackMove(s: EncounterState, token: MapToken, to: Cell) {
+  const moved = (s.moved ??= {});
+  const so = moved[token.id] ?? { from: token.at, feet: 0 };
+  const back = so.from[0] === to[0] && so.from[1] === to[1];
+  moved[token.id] = { from: so.from, feet: back ? 0 : so.feet + pathFeet(s.map!, token.size, token.at, to) };
 }
 
 /** Moves the turn forward (1) or back (-1), wrapping into the next or previous round. */

@@ -427,6 +427,8 @@ export interface Combatant {
   tokenId?: string;
   /** PCs: who plays them. */
   player?: string | null;
+  /** PCs: walking speed in feet, from the character sheet (#104), for the movement count. */
+  speed?: number | null;
 }
 
 /** A monster's numbers from the wiki, for the stat block view. */
@@ -539,6 +541,11 @@ export interface EncounterState {
   join?: { code: string; players: JoinedPlayer[] };
   /** A dungeon being run (#106): its rooms and what's happened in them. DM only. */
   dungeon?: DungeonRun;
+  /**
+   * During a fight: how far each token has moved since its creature's turn started, and from
+   * where. Shown to help the DM rule, never enforced.
+   */
+  moved?: Record<string, { from: Cell; feet: number }>;
 }
 
 // --- Dungeons (ReesMcD/dnd-wiki#106) -------------------------------------------------------------
@@ -766,6 +773,8 @@ export interface PlayerCombatant {
   health: Health | null;
   conditions: Condition[];
   concentrating: string | null;
+  /** PCs: walking speed in feet, when the sheet gives it. */
+  speed?: number | null;
 }
 
 /** What one player's device gets: no hidden combatants, no monster numbers, no DM notes. */
@@ -793,6 +802,8 @@ export interface PlayerView {
   templates: PlacedTemplate[];
   /** The table's latest rolls (not the DM's secret ones). */
   rolls: EncounterRoll[];
+  /** During a fight: feet each visible token has moved since its turn started. */
+  moved: Record<string, number>;
 }
 
 /** A spell area on the map: who placed it ("dm" or a combatant id). */
@@ -804,7 +815,8 @@ export type PlayerRequest =
   | { type: 'damage' | 'heal' | 'tempHp'; amount: number }
   | { type: 'condition'; name: ConditionName; remove?: boolean }
   /** Moves my own token. */
-  | { type: 'move'; at: Cell }
+  /** `token`: another PC's piece (default: my own). */
+  | { type: 'move'; at: Cell; token?: string }
   /** Shows a spell area for everyone; I can remove only mine. */
   | { type: 'template'; template: AreaTemplate }
   | { type: 'clearTemplate'; id: string }

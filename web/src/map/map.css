@@ -27,4 +27,4 @@
 .map3d canvas { cursor: grab; }
 .map3d-loading { display: grid; place-items: center; color: var(--muted); }
 .map3d-guide { position: absolute; z-index: 4; transform: translateX(-50%); pointer-events: none; padding: 4px 10px; border-radius: 8px; background: var(--surface, #131722); color: var(--text); font: 600 13px system-ui, sans-serif; white-space: nowrap; box-shadow: var(--shadow); }
-.map3d-guide.bad { color: var(--bad); }
+.map3d-guide.warn { color: var(--warn); }
