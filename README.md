@@ -467,10 +467,20 @@ What's in it:
     save DC, hiding and revealing, and each monster's stat block.
   - **The battle map:** a wiki encounter's map (walls, doors, water, difficult ground, cover,
     elevation, trees and the like), with a token per combatant: the current turn ringed, HP bars,
-    hidden ones faded. Drag a token to move it; it snaps to squares, shows the distance in feet
-    and refuses walls, closed doors, deep water and occupied squares. **Doors** opens, closes and
+    hidden ones faded. Drag a token to move it; it snaps to squares. **Doors** opens, closes and
     locks them; **Difficult** marks or clears squares; combatants without a token are placed with a
     tap. A blank encounter can get a blank grid. Pinch or scroll to zoom, drag the map to pan.
+  - **The board helps; you rule.** Like picking up a piece at a real table, a token goes anywhere
+    on the board: past its speed, into a wall, onto someone. No dash button, no turn checks. What
+    it does is keep count for you:
+    - **Distance:** dragging shows how far the move walks (the short way round walls, double
+      through difficult ground and water, 5 ft diagonals) and, in a fight, the total this turn
+      against the creature's speed when it's known ("20 ft · 35 of 30 ft this turn"). An odd
+      square says so ("someone's there", "in the way") and it lands there anyway.
+    - **Moved this turn:** under whoever's turn it is. It starts again each turn, or when the
+      token goes back where its turn started.
+    - **Flanked:** shown on a creature with two foes able to act on opposite sides or corners
+      (the optional rule; use it or don't).
   - **3D:** the **2D / 3D** switch on the map (tracker and players' phones) shows the same map in
     3D: walls and doors with height, raised ground, cover, trees and pillars, water, and the
     tokens as figures with their names and HP. Drag to turn the camera, pinch or scroll to zoom,
@@ -514,8 +524,8 @@ What's in it:
     once and the device remembers it.
   - They see whose turn it is ("Your turn" buzzes the phone), the party's HP and conditions, and
     whether monsters look healthy, bloodied or down.
-  - They change only their own character's HP, conditions and initiative, move only their own
-    token on the map, roll dice for the table and place their own spell area (hidden monsters, the
+  - They change only their own character's HP, conditions and initiative, move their own token
+    or a friend's (never a monster's), roll dice for the table and place their own spell area (hidden monsters, the
     DM's map notes and anything under the fog never reach their phones).
   - To reach their phones it needs a public address: see **Settings → Encounters** (Tailscale Funnel).
   - **Posting the link:**

@@ -49,7 +49,7 @@ export function encounterFromDungeon(w: WikiDungeon, id: string, deps: RuleDeps)
   const taken = new Set<string>();
   const door = entrance(map);
   for (const p of w.party) {
-    const c = makeCombatant(combatantId(p.name, taken), { name: p.name, kind: 'pc', ac: p.ac, hp: p.hp, player: p.player, ...(typeof p.dex === 'number' ? { dex: p.dex } : {}), ...(typeof p.initiative_bonus === 'number' ? { initiativeBonus: p.initiative_bonus } : {}) });
+    const c = makeCombatant(combatantId(p.name, taken), { name: p.name, kind: 'pc', ac: p.ac, hp: p.hp, player: p.player, ...(typeof p.dex === 'number' ? { dex: p.dex } : {}), ...(typeof p.initiative_bonus === 'number' ? { initiativeBonus: p.initiative_bonus } : {}), speed: p.speed });
     taken.add(c.id);
     const tokenId = uniqueTokenId(s.map, c.id);
     s.map = placeToken(s.map!, { id: tokenId, name: c.name, kind: 'pc', size: 'medium' }, door);
@@ -146,6 +146,7 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
       if (run.fight.room && !s.combatants.some((c) => c.kind !== 'pc')) roomOf(run, run.fight.room).state.cleared = true;
       log(`Fight over after ${Math.max(0, s.round)} round${s.round === 1 ? '' : 's'}${fallen.length ? `: ${fallen.map((c) => c.name).join(', ')} defeated` : ''}`);
       run.fight = null;
+      delete s.moved;
       s.status = 'exploring';
       s.round = 0;
       s.turn = null;

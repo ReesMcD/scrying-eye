@@ -2,9 +2,10 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import type { PlayerCombatant, PlayerView } from '../../../src/shared/types';
 import { RollList } from '../dice/DicePanel';
 import { OrbMark } from '../icons';
-import { BattleMapView, type TokenInfo } from '../map/BattleMapView';
+import { BattleMapView } from '../map/BattleMapView';
 import { useArtPlan } from '../map/useArtPlan';
 import { follow, play, PlayError } from './client';
+import { playerTokenInfo } from './tokenInfo';
 
 const Map3D = lazy(() => import('../map/Map3D'));
 
@@ -40,11 +41,7 @@ function Screen({ view }: { view: PlayerView }) {
   const [flat, setFlat] = useState(false);
   const art = useArtPlan(view.map, play.art);
   const current = view.order.find((c) => c.current);
-  const info: Record<string, TokenInfo> = {};
-  for (const c of view.order) {
-    const token = view.tokens[c.id];
-    if (token) info[token] = { name: c.name, current: c.current, hp: c.hp, maxHp: c.maxHp };
-  }
+  const info = playerTokenInfo({ ...view, me: null });
   const map = view.map;
   const props = map && {
     map,

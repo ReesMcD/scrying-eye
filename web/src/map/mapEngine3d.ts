@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { canPlace, distanceFeet, SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
+import { onBoard, SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
+import { moveGuide } from './moveGuide';
 import { buildScene, cellAt, figureOf, sceneKey, type BoxPart, type MapScene } from '../../../src/shared/mapScene';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
@@ -457,7 +458,7 @@ export class MapEngine3d {
       fig.turnRing.visible = !!ti?.current;
       fig.pickRing.visible = selected === t.id || !!ti?.mine;
       (fig.pickRing.material as THREE.MeshBasicMaterial).color.set(selected === t.id ? this.colors.text : this.colors.accent);
-      const tagKey = JSON.stringify([ti?.name ?? t.name, ti?.hp, ti?.maxHp]);
+      const tagKey = JSON.stringify([ti?.name ?? t.name, ti?.hp, ti?.maxHp, ti?.flanked, ti?.current && ti.moved, ti?.speed]);
       if (tagKey !== fig.tagKey) {
         fig.tagKey = tagKey;
         this.paintTag(fig.tag, ti?.name ?? t.name, ti);
@@ -514,7 +515,10 @@ export class MapEngine3d {
     const ctx = canvas.getContext('2d')!;
     const font = '600 30px system-ui, sans-serif';
     ctx.font = font;
-    const text = name.length > 18 ? `${initials(name)} · ${name.slice(0, 14)}…` : name;
+    const short = name.length > 18 ? `${initials(name)} · ${name.slice(0, 14)}…` : name;
+    // Table aids: flanked, and how far whoever's turn it is has moved.
+    const aids = [ti?.flanked ? 'flanked' : '', ti?.current && ti.moved ? `${ti.moved} ft${ti.speed ? ` of ${ti.speed}` : ''}` : ''].filter(Boolean);
+    const text = [short, ...aids].join(' · ');
     const width = Math.ceil(ctx.measureText(text).width) + 28;
     const hasHp = ti?.hp != null && !!ti.maxHp;
     canvas.width = width;
@@ -596,8 +600,7 @@ export class MapEngine3d {
       const { map } = this.props();
       // Grab it by its middle: the pointer is the centre of its squares.
       d.to = [Math.max(0, Math.min(map.width - n, cell[0] - Math.floor((n - 1) / 2))), Math.max(0, Math.min(map.height - n, cell[1] - Math.floor((n - 1) / 2)))];
-      const ok = canPlace(map, d.token.id, d.token.size, d.to).ok;
-      this.showGuide(`${distanceFeet(d.from, d.to)} ft`, ok, e);
+      this.showGuide(moveGuide(map, d.token, d.from, d.to, this.props().info[d.token.id]), e);
     }
     this.syncFigures();
     this.render();
@@ -613,7 +616,7 @@ export class MapEngine3d {
       this.hideGuide();
       const props = this.props();
       if (d.moved) {
-        if ((d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) && canPlace(props.map, d.token.id, d.token.size, d.to).ok) props.onMove(d.token.id, d.to);
+        if ((d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) && onBoard(props.map, d.token.size, d.to)) props.onMove(d.token.id, d.to);
       } else props.onTap?.(d.token.at, d.token);
       this.syncFigures();
       this.render();
@@ -637,11 +640,11 @@ export class MapEngine3d {
     this.render();
   }
 
-  private showGuide(text: string, ok: boolean, e: PointerEvent): void {
+  private showGuide(guide: { text: string; warning: string | null }, e: PointerEvent): void {
     const r = this.el.getBoundingClientRect();
     this.guide.hidden = false;
-    this.guide.textContent = ok ? text : `${text} · can't stand there`;
-    this.guide.classList.toggle('bad', !ok);
+    this.guide.textContent = guide.warning ? `${guide.text} · ${guide.warning}` : guide.text;
+    this.guide.classList.toggle('warn', !!guide.warning);
     this.guide.style.left = `${e.clientX - r.left}px`;
     this.guide.style.top = `${e.clientY - r.top - 44}px`;
   }

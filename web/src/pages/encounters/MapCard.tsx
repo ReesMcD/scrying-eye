@@ -3,6 +3,7 @@ import { api, apiBlob } from '../../api';
 import { doorsAt, isDifficult, secretDoorsAt, type BattleMap, type Cell, type MapToken } from '../../../../src/shared/battlemap';
 import { cellKey, roomAt } from '../../../../src/shared/mapSight';
 import { useAreaTool } from '../../map/AreaTool';
+import { flankedTokens, flankPieces } from '../../../../src/shared/tableAids';
 import type { TokenInfo } from '../../map/BattleMapView';
 import { MapView } from '../../map/MapView';
 import { useArtPlan } from '../../map/useArtPlan';
@@ -60,10 +61,16 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
   const revealed = new Set(state.fog?.revealed ?? []);
 
   const byToken = new Map(state.combatants.filter((c) => c.tokenId).map((c) => [c.tokenId!, c]));
+  const fighting = state.status === 'running';
+  const flanked = fighting ? flankedTokens(map, flankPieces(state.combatants.map((c) => ({ ...c, down: c.hp === 0 })))) : new Set<string>();
   const info: Record<string, TokenInfo> = {};
   for (const t of map.tokens) {
     const c = byToken.get(t.id);
-    info[t.id] = c ? { name: c.name, current: c.id === state.turn, hp: c.hp, maxHp: c.maxHp, hidden: c.hidden } : { name: t.name, hidden: !!t.hidden };
+    const walk = c?.ref ? state.statBlocks[c.ref]?.speed?.walk : undefined;
+    info[t.id] = {
+      ...(c ? { name: c.name, current: c.id === state.turn, hp: c.hp, maxHp: c.maxHp, hidden: c.hidden, speed: c.speed ?? (typeof walk === 'number' ? walk : null) } : { name: t.name, hidden: !!t.hidden }),
+      ...(fighting ? { moved: state.moved?.[t.id]?.feet ?? 0, flanked: flanked.has(t.id) } : {}),
+    };
   }
   const offMap = state.combatants.filter((c) => !c.tokenId || !map.tokens.some((t) => t.id === c.tokenId));
   const placingName = placing ? state.combatants.find((c) => c.id === placing)?.name : undefined;

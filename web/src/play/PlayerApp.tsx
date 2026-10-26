@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConditionName, PlayerCombatant, PlayerView } from '../../../src/shared/types';
 import { OrbMark } from '../icons';
-import type { TokenInfo } from '../map/BattleMapView';
 import { MapView } from '../map/MapView';
 import { useArtPlan } from '../map/useArtPlan';
 import { useAreaTool } from '../map/AreaTool';
 import { DicePanel, RollList } from '../dice/DicePanel';
 import { device, follow, play, PlayError } from './client';
+import { playerTokenInfo } from './tokenInfo';
 
 const CONDITIONS: ConditionName[] = ['Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
 
@@ -178,11 +178,9 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
     onClear: (id) => void act({ type: 'clearTemplate', id }),
   });
   const myToken = view.me ? view.tokens[view.me] : undefined;
-  const info: Record<string, TokenInfo> = {};
-  for (const c of view.order) {
-    const token = view.tokens[c.id];
-    if (token) info[token] = { name: c.name, current: c.current, hp: c.hp, maxHp: c.maxHp, mine: c.id === view.me };
-  }
+  // Any of the party's pieces can be moved, as at a real table; monsters are the DM's.
+  const partyTokens = new Set(view.order.filter((c) => c.kind === 'pc').map((c) => view.tokens[c.id]));
+  const info = playerTokenInfo(view);
   return (
     <section aria-label="Battle map">
       <h2>Map</h2>
@@ -190,8 +188,8 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
       <MapView
         map={map}
         info={info}
-        canMove={(t) => t === myToken && !area.active}
-        onMove={(_, at) => void act({ type: 'move', at })}
+        canMove={(t) => !!view.me && partyTokens.has(t) && !area.active}
+        onMove={(token, at) => void act(token === myToken ? { type: 'move', at } : { type: 'move', at, token })}
         fog={view.fog ? { revealed: new Set(view.fog), solid: true } : null}
         overlays={area.overlays}
         {...(view.me && area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}
@@ -203,7 +201,7 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
         {area.active
           ? 'Drag on the map to place your spell’s area (everyone sees it) or to measure.'
           : myToken
-            ? 'Drag your token (ringed) to move. Pinch to zoom, drag the map to look around.'
+            ? 'Drag your token (ringed), or a friend’s, to move it. Pinch to zoom, drag the map to look around.'
             : view.me
               ? 'The DM hasn’t put you on the map yet.'
               : 'Pinch to zoom, drag to look around.'}

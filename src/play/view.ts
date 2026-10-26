@@ -43,6 +43,7 @@ export function playerView(s: EncounterState, me: string | null): PlayerView {
         health: pc(c) ? null : healthOf(c),
         conditions: c.conditions.map((x) => ({ name: x.name, ...(x.level ? { level: x.level } : {}), ...(x.rounds ? { rounds: x.rounds } : {}) })),
         concentrating: pc(c) ? c.concentrating : null,
+        ...(pc(c) && c.speed ? { speed: c.speed } : {}),
       }),
     ),
     party: s.combatants.filter(pc).map((c) => ({ id: c.id, name: c.name, taken: taken.has(c.id) })),
@@ -54,6 +55,7 @@ export function playerView(s: EncounterState, me: string | null): PlayerView {
     // An area under the fog would give away what's there: players see only those they could see.
     templates: (s.templates ?? []).filter((t) => !s.fog || s.fog.revealed.includes(`${Math.min(t.at[0], (s.map?.width ?? 1) - 1)},${Math.min(t.at[1], (s.map?.height ?? 1) - 1)}`)),
     rolls: (s.rolls ?? []).filter((r) => !r.secret).slice(-PLAYER_ROLLS),
+    moved: Object.fromEntries(order.flatMap((c) => (c.tokenId && s.moved?.[c.tokenId] ? [[c.tokenId, s.moved[c.tokenId]!.feet]] : []))),
   };
 }
 
@@ -63,7 +65,7 @@ function clipped(s: EncounterState) {
   return s.fog ? clipToRevealed(map, new Set(s.fog.revealed)) : map;
 }
 
-/** A player's request as a tracker action, if they may make it: only on their own PC. */
+/** A player's request as a tracker action, if they may make it: on their own PC (moving: any PC). */
 export function playerAction(s: EncounterState, me: string | null, request: PlayerRequest): EncounterAction {
   const mine = me ? s.combatants.find((c) => c.id === me && c.kind === 'pc') : undefined;
   if (!mine) throw new EncounterError('Pick your character first');
@@ -79,9 +81,16 @@ export function playerAction(s: EncounterState, me: string | null, request: Play
     case 'condition':
       if (!CONDITIONS.includes(request.name)) throw new EncounterError('Unknown condition');
       return { type: 'condition', id: mine.id, name: request.name, ...(request.remove ? { remove: true } : {}) };
-    case 'move':
+    case 'move': {
+      // Any of the party's pieces, as at a real table (helping a friend, a shove); monsters are the DM's.
+      if (request.token !== undefined) {
+        const piece = s.combatants.find((c) => c.tokenId === request.token && c.kind === 'pc' && !c.hidden);
+        if (!piece) throw new EncounterError('Only the DM moves that one');
+        return { type: 'move', token: piece.tokenId!, at: request.at };
+      }
       if (!mine.tokenId) throw new EncounterError('You’re not on the map yet: ask the DM to place you');
       return { type: 'move', token: mine.tokenId, at: request.at };
+    }
     case 'template':
       return { type: 'template', template: { ...request.template, label: mine.name }, by: mine.id };
     case 'clearTemplate':

@@ -163,10 +163,15 @@ export function footprint(at: Cell, size: TokenSize): Cell[] {
 
 export type PlaceCheck = { ok: true } | { ok: false; reason: string };
 
-/** Whether a token can stand at `at`: inside the grid, not on anything blocking, not on another token. */
-export function canPlace(map: BattleMap, tokenId: string, size: TokenSize, at: Cell): PlaceCheck {
+/** Whether a token of this size fits on the board at `at`. */
+export function onBoard(map: BattleMap, size: TokenSize, at: Cell): boolean {
   const n = SIZE_SQUARES[size];
-  if (!isCell(at) || at[0] < 0 || at[1] < 0 || at[0] + n > map.width || at[1] + n > map.height) return { ok: false, reason: 'That’s off the map' };
+  return isCell(at) && at[0] >= 0 && at[1] >= 0 && at[0] + n <= map.width && at[1] + n <= map.height;
+}
+
+/** Whether a token can stand at `at`: on the board, not on anything blocking, not on another token. */
+export function canPlace(map: BattleMap, tokenId: string, size: TokenSize, at: Cell): PlaceCheck {
+  if (!onBoard(map, size, at)) return { ok: false, reason: 'That’s off the map' };
   const blocked = new Set<string>();
   for (const t of map.terrain) if (blocks(t)) for (const [x, y] of cellsOf(t, map.width, map.height)) blocked.add(key(x, y));
   // A door is drawn over the wall it sits in: open, it's a way through.
@@ -246,8 +251,9 @@ export function nearestFree(map: BattleMap, tokenId: string, size: TokenSize, fr
 export function moveToken(map: BattleMap, tokenId: string, at: Cell): BattleMap {
   const token = map.tokens.find((t) => t.id === tokenId);
   if (!token) throw new MapError('That token isn’t on the map');
-  const check = canPlace(map, tokenId, token.size, at);
-  if (!check.ok) throw new MapError(check.reason);
+  // Like picking up a piece at the table: it goes anywhere on the board. The rules are the DM's
+  // to call; the map views say when a square looks wrong (canPlace).
+  if (!onBoard(map, token.size, at)) throw new MapError('That’s off the map');
   return { ...map, tokens: map.tokens.map((t) => (t.id === tokenId ? { ...t, at: [at[0], at[1]] } : t)) };
 }
 
