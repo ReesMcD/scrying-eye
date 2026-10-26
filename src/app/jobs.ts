@@ -9,7 +9,8 @@ export type StepRunner = (job: Job, log: (msg: string) => void) => Promise<void>
 
 /**
  * Runs pipeline steps one at a time (they call rate-limited APIs and write the same session files),
- * keeps recent jobs in memory with their logs, and emits "job" events for live progress.
+ * keeps recent jobs in memory with their logs, and emits "job" events for live progress: the job,
+ * plus the log lines just added (none for a status change).
  */
 export class JobRunner extends EventEmitter {
   private readonly jobs = new Map<string, Job>();
@@ -57,8 +58,9 @@ export class JobRunner extends EventEmitter {
         job.startedAt = Date.now();
         this.emit('job', job);
         const log = (msg: string) => {
-          for (const line of msg.split('\n')) job.logs.push(line);
-          this.emit('job', job);
+          const added = msg.split('\n');
+          job.logs.push(...added);
+          this.emit('job', job, added);
         };
         // Jobs run in order, so a dependency has finished by now.
         const dependency = job.after ? this.jobs.get(job.after) : undefined;

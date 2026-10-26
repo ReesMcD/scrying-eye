@@ -205,6 +205,12 @@ export interface Job {
   after?: string;
 }
 
+/**
+ * A job's live update (the "job" event): its status, and only the log lines added since the last
+ * update. `logCount` is the log's length after them, so a page that missed some asks for the job.
+ */
+export type JobUpdate = Omit<Job, 'logs'> & { added: string[]; logCount: number };
+
 // --- Config --------------------------------------------------------------------------------------
 
 export interface ConfigState {

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { PCM_RATE, decodeToPcm16k } from '../audio/decode.js';
+import { PCM_RATE } from '../audio/decode.js';
 
 export interface Clip {
   /** Absolute path to the utterance file. */
@@ -46,16 +46,65 @@ export function planBatches(userId: string, clips: readonly Clip[], maxSec: numb
   return batches;
 }
 
-/** Decodes a batch's clips and lays them out on one 16 kHz mono timeline at their planned offsets. */
-export async function renderBatchPcm(plan: BatchPlan): Promise<Int16Array> {
-  const out = new Int16Array(Math.ceil(plan.durationSec * PCM_RATE));
-  for (const clip of plan.clips) {
-    const pcm = await decodeToPcm16k(clip.file);
-    const start = Math.round(clip.offsetSec * PCM_RATE);
-    const length = Math.min(pcm.length, Math.round(clip.durationSec * PCM_RATE), out.length - start);
-    out.set(pcm.subarray(0, Math.max(0, length)), start);
-  }
+/** Clips decoded per ffmpeg run: few processes, but well under macOS's default open-file limit (256). */
+const CLIPS_PER_RUN = 64;
+
+/**
+ * Decodes a batch's clips and lays them out on one 16 kHz mono timeline at their planned offsets.
+ * One ffmpeg run decodes many clips at once (#41): starting a process per clip cost about two
+ * minutes per game. Each clip is cut to its planned length and padded with silence to where the
+ * next one starts, so the layout matches the plan sample for sample.
+ */
+export async function renderBatchPcm(plan: BatchPlan, ffmpegPath = process.env.FFMPEG_PATH ?? 'ffmpeg'): Promise<Int16Array> {
+  const total = Math.ceil(plan.durationSec * PCM_RATE);
+  const out = new Int16Array(total);
+  const starts = plan.clips.map((c) => Math.min(total, Math.round(c.offsetSec * PCM_RATE)));
+  const runs: number[] = [];
+  for (let first = 0; first < plan.clips.length; first += CLIPS_PER_RUN) runs.push(first);
+  // A few runs at once: ffmpeg spends much of its time opening inputs, which overlaps well.
+  await mapLimit(runs, PARALLEL_RUNS, async (first) => {
+    const clips = plan.clips.slice(first, first + CLIPS_PER_RUN);
+    const runStart = starts[first]!;
+    const runEnd = first + clips.length < plan.clips.length ? starts[first + clips.length]! : total;
+    const filters = clips.map((clip, i) => {
+      const start = starts[first + i]!;
+      const slot = (i + 1 < clips.length ? starts[first + i + 1]! : runEnd) - start;
+      const length = Math.max(0, Math.min(Math.round(clip.durationSec * PCM_RATE), slot));
+      return `[${i}:a]aformat=sample_fmts=s16:channel_layouts=mono:sample_rates=${PCM_RATE},atrim=end_sample=${length},apad=whole_len=${slot}[c${i}]`;
+    });
+    const graph = `${filters.join(';')};${clips.map((_, i) => `[c${i}]`).join('')}concat=n=${clips.length}:v=0:a=1[out]`;
+    // Utterances are always Ogg Opus written by this app (or Craig's), so skip probing each one.
+    const input = (file: string) => (/\.ogg$/i.test(file) ? ['-f', 'ogg', '-probesize', '4096', '-analyzeduration', '0', '-i', file] : ['-i', file]);
+    const pcm = await runFfmpeg(ffmpegPath, [...clips.flatMap((c) => input(c.file)), '-filter_complex', graph, '-map', '[out]', '-f', 's16le', '-ac', '1', '-ar', String(PCM_RATE), 'pipe:1']);
+    out.set(pcm.subarray(0, Math.max(0, Math.min(pcm.length, runEnd - runStart, total - runStart))), runStart);
+  });
   return out;
+}
+
+const PARALLEL_RUNS = 3;
+
+async function mapLimit<T>(items: readonly T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await work(items[next++]!);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+function runFfmpeg(ffmpegPath: string, args: string[]): Promise<Int16Array> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, ['-v', 'error', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const chunks: Buffer[] = [];
+    let stderr = '';
+    proc.stdout.on('data', (c: Buffer) => chunks.push(c));
+    proc.stderr.on('data', (c: Buffer) => (stderr += c.toString()));
+    proc.once('error', reject);
+    proc.once('close', (code) => {
+      if (code !== 0) return reject(new Error(`ffmpeg exited ${code} rendering a batch: ${stderr.trim().slice(-500)}`));
+      const buf = Buffer.concat(chunks);
+      resolve(new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.length / 2)));
+    });
+  });
 }
 
 /** Encodes 16 kHz mono PCM to FLAC (lossless, ~half the size of WAV). */

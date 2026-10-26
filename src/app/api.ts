@@ -20,7 +20,7 @@ import { configObject, configSchema } from '../config/schema.js';
 import { encounterRoutes } from './encounterRoutes.js';
 import { EncounterStore } from '../encounter/store.js';
 import { WikiEncounters } from '../encounter/wiki.js';
-import type { DndBeyondCharacter, EncounterState } from '../shared/types.js';
+import type { DndBeyondCharacter, EncounterState, JobUpdate } from '../shared/types.js';
 import { DndBeyondError, lookupCharacter } from '../dndbeyond/characters.js';
 import { artImage, MapArt } from '../battlemap/library.js';
 
@@ -201,7 +201,25 @@ export function createApi(opts: ApiOptions): Hono {
   /** Server-sent events: "job" per job update, "bot" per bot/recording status change. */
   api.get('/events', (c) =>
     streamSSE(c, async (stream) => {
-      const send = (job: Job) => void stream.writeSSE({ event: 'job', data: JSON.stringify(job) });
+      // Log lines are batched a few times a second (a recap logs hundreds); a status change goes at once.
+      const pending = new Map<string, { job: Job; added: string[] }>();
+      let flushTimer: ReturnType<typeof setTimeout> | undefined;
+      const flush = () => {
+        flushTimer = undefined;
+        for (const { job, added } of pending.values()) {
+          const { logs, ...rest } = job;
+          const update: JobUpdate = { ...rest, added, logCount: logs.length };
+          void stream.writeSSE({ event: 'job', data: JSON.stringify(update) });
+        }
+        pending.clear();
+      };
+      const send = (job: Job, added: string[] = []) => {
+        const entry = pending.get(job.id);
+        if (entry) entry.added.push(...added);
+        else pending.set(job.id, { job, added: [...added] });
+        if (!added.length) flush();
+        else flushTimer ??= setTimeout(flush, 250);
+      };
       const sendBot = (status: BotStatus) => void stream.writeSSE({ event: 'bot', data: JSON.stringify(status) });
       const sendMusic = (status: MusicStatus) => void stream.writeSSE({ event: 'music', data: JSON.stringify(status) });
       const sendLive = (update: LiveUpdate) => void stream.writeSSE({ event: 'live', data: JSON.stringify(update) });
@@ -215,6 +233,7 @@ export function createApi(opts: ApiOptions): Hono {
       const ping = setInterval(() => void stream.writeSSE({ event: 'ping', data: '' }), 25_000);
       await new Promise<void>((resolve) => stream.onAbort(resolve));
       clearInterval(ping);
+      clearTimeout(flushTimer);
       opts.jobs.off('job', send);
       opts.bot?.off('status', sendBot);
       opts.music?.off('status', sendMusic);

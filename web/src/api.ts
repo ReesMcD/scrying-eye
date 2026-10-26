@@ -1,4 +1,4 @@
-import type { BotStatus, EncounterState, Job, LiveUpdate, MusicStatus } from './types';
+import type { BotStatus, EncounterState, JobUpdate, LiveUpdate, MusicStatus } from './types';
 
 // Same-origin by default; set VITE_API_URL when the UI is hosted elsewhere (e.g. Vercel).
 const BASE = `${(import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')}/api`;
@@ -87,7 +87,7 @@ export async function downloadFile(sessionId: string, name: string): Promise<voi
 }
 
 type Listener = {
-  onJob?: (job: Job) => void;
+  onJob?: (update: JobUpdate) => void;
   onBot?: (status: BotStatus) => void;
   onMusic?: (status: MusicStatus) => void;
   onLive?: (update: LiveUpdate) => void;
@@ -143,7 +143,7 @@ function startStream(): () => void {
             const event = /^event: (.*)$/m.exec(chunk)?.[1];
             const data = /^data: (.*)$/m.exec(chunk)?.[1];
             if (!data) continue;
-            if (event === 'job') listeners.forEach((l) => l.onJob?.(JSON.parse(data) as Job));
+            if (event === 'job') listeners.forEach((l) => l.onJob?.(JSON.parse(data) as JobUpdate));
             if (event === 'bot') listeners.forEach((l) => l.onBot?.(JSON.parse(data) as BotStatus));
             if (event === 'music') listeners.forEach((l) => l.onMusic?.(JSON.parse(data) as MusicStatus));
             if (event === 'live') listeners.forEach((l) => l.onLive?.(JSON.parse(data) as LiveUpdate));
@@ -184,6 +184,6 @@ export function subscribe(listener: Listener): () => void {
   };
 }
 
-export function subscribeJobs(onJob: (job: Job) => void, onReconnect?: () => void): () => void {
+export function subscribeJobs(onJob: (update: JobUpdate) => void, onReconnect?: () => void): () => void {
   return subscribe({ onJob, ...(onReconnect ? { onReconnect } : {}) });
 }

@@ -327,3 +327,23 @@ test('replacing an inline list keeps its comment, above the key', () => {
   assert.deepEqual(store.write(config).errors, []);
   assert.match(readFileSync(file, 'utf8'), /^recording:\n  # music bot goes here\n  ignore_users:\n    - "423456789012345678"\n/);
 });
+
+test('job updates carry only new log lines; a gap means fetching the whole job (#42)', async () => {
+  const { applyJobUpdate } = await import('../web/src/jobs.js');
+  const seen: Array<[number, string[]]> = [];
+  const jobs = new JobRunner(async (_job, log) => {
+    log('one');
+    log('two\nthree');
+  });
+  jobs.on('job', (job: { logs: string[] }, added: string[] = []) => seen.push([job.logs.length, added]));
+  jobs.enqueue('s', 'merge');
+  await jobs.idle();
+  assert.deepEqual(seen.map(([, added]) => added), [[], [], ['one'], ['two', 'three'], []], 'queued, running, two logs, done');
+
+  const base = { id: 'j', sessionId: 's', step: 'merge' as const, force: false, status: 'running' as const, createdAt: 1 };
+  const first = applyJobUpdate(undefined, { ...base, added: ['one'], logCount: 1 })!;
+  assert.deepEqual(first.logs, ['one']);
+  assert.deepEqual(applyJobUpdate(first, { ...base, added: ['two'], logCount: 2 })!.logs, ['one', 'two']);
+  assert.equal(applyJobUpdate(first, { ...base, added: ['four'], logCount: 4 }), undefined, 'lines 2 and 3 were missed');
+  assert.equal(applyJobUpdate(first, { ...base, status: 'done', added: [], logCount: 1 })!.status, 'done');
+});
