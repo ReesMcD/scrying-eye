@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Combatant, CombatantKind, EncounterAction, EncounterState } from '../../types';
+import { DicePanel } from '../../dice/DicePanel';
 import { Badge } from '../../ui';
 import { CombatantPanel } from './CombatantPanel';
 import { JoinPanel } from './JoinPanel';
@@ -86,6 +87,8 @@ export function Tracker({ state, act, onEnd }: { state: EncounterState; act: Act
       </ol>
 
       <AddCombatant act={act} />
+
+      <DmDice state={state} act={act} />
 
       {state.notes && Object.values(state.notes).some(Boolean) && (
         <details className="card">
@@ -263,5 +266,26 @@ function AddCombatant({ act }: { act: Act }) {
         </button>
       </form>
     </details>
+  );
+}
+
+/** The DM's dice: shown to the table unless secret, and posted to Discord when that's on. */
+function DmDice({ state, act }: { state: EncounterState; act: Act }) {
+  const [secret, setSecret] = useState(false);
+  return (
+    <DicePanel
+      rolls={state.rolls ?? []}
+      onRoll={(expression, label) => act({ type: 'roll', expression, ...(label ? { label } : {}), ...(secret ? { secret: true } : {}) })}
+      extra={
+        <>
+          <label className="row small" title="Only you see it">
+            <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} /> Secret
+          </label>
+          <label className="row small" title="Players' and your public rolls go to the Discord channel too">
+            <input type="checkbox" checked={!!state.postRolls} onChange={(e) => void act({ type: 'postRolls', on: e.target.checked })} /> Post to Discord
+          </label>
+        </>
+      }
+    />
   );
 }

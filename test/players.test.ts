@@ -195,3 +195,45 @@ test('the DM gets the join link (public when set) and can check the public addre
   assert.match(((await (await call('/players/check', { public_url: 'https://elsewhere.example' })).json()) as { message: string }).message, /not as the players' page/);
   assert.match(((await (await call('/players/check', { public_url: 'http://insecure.example' })).json()) as { message: string }).message, /https/);
 });
+
+test('table dice: players roll as their PC, the DM openly or in secret; players never see secret rolls', () => {
+  const dice = (...values: number[]): RuleDeps => {
+    let i = 0;
+    return { ...deps(), die: () => values[i++ % values.length]! };
+  };
+  let s = applyAction(fight(), playerAction(fight(), 'aria', { type: 'roll', expression: '1d20+5', label: 'Rapier' }), dice(20));
+  s = applyAction(s, { type: 'roll', expression: '2d6', secret: true }, dice(3, 4));
+  s = applyAction(s, { type: 'roll', expression: '1d20', by: 'ogre' }, dice(9));
+  s = applyAction(s, { type: 'roll', expression: '1d8' }, dice(5));
+
+  assert.deepEqual(
+    s.rolls!.map((r) => [r.who, r.label ?? null, r.total, r.crit ?? null, r.secret ?? false]),
+    [
+      ['Aria', 'Rapier', 25, 'success', false],
+      ['DM', null, 7, null, true],
+      ['Ogre', null, 9, null, true],
+      ['DM', null, 5, null, false],
+    ],
+    "a hidden monster's roll is secret, so it doesn't give it away",
+  );
+  const seen = playerView(s, 'brom').rolls;
+  assert.deepEqual(seen.map((r) => r.who), ['Aria', 'DM']);
+  assert.ok(!JSON.stringify(playerView(s, 'brom')).includes('Ogre'));
+
+  assert.throws(() => applyAction(s, { type: 'roll', expression: '1d20+banana' }, deps()), /can't read/);
+  assert.throws(() => playerAction(s, null, { type: 'roll', expression: '1d20' }), /Pick your character/, 'guests watch, they don’t roll');
+  for (let n = 0; n < 40; n++) s = applyAction(s, { type: 'roll', expression: 'd6' }, deps());
+  assert.equal(s.rolls!.length, 30, 'only the latest rolls are kept');
+});
+
+test('table dice go to Discord only when the DM turns posting on, and never secret ones', () => {
+  const store = new EncounterStore(mkdtempSync(join(tmpdir(), 'rolls-')), { ...deps(), die: () => 4 }, () => {});
+  store.start({ title: 'Bridge' });
+  const posted: string[] = [];
+  store.on('roll', (r: { who: string; total: number }) => posted.push(`${r.who} ${r.total}`));
+  store.act({ type: 'roll', expression: '1d6' });
+  store.act({ type: 'postRolls', on: true });
+  store.act({ type: 'roll', expression: '2d6' });
+  store.act({ type: 'roll', expression: '1d6', secret: true });
+  assert.deepEqual(posted, ['DM 8']);
+});

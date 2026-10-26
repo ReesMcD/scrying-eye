@@ -497,11 +497,34 @@ export interface EncounterState {
   fog?: { revealed: string[]; follow: boolean };
   /** Spell areas on the map, shown to everyone. */
   templates?: PlacedTemplate[];
+  /** The latest dice rolled at the table (#58), oldest first. */
+  rolls?: EncounterRoll[];
+  /** Post the table's rolls to Discord too. */
+  postRolls?: boolean;
   startedAt: number;
   endedAt?: number;
   log: EncounterLogEntry[];
   /** The players' join link (its secret code) and who has joined. */
   join?: { code: string; players: JoinedPlayer[] };
+}
+
+/** A roll made in the tracker or on a player's phone. */
+export interface EncounterRoll {
+  id: string;
+  at: number;
+  round: number;
+  /** "dm" or a combatant id. */
+  by: string;
+  /** Who rolled, as shown: "DM" or the combatant's name. */
+  who: string;
+  label?: string;
+  expression: string;
+  total: number;
+  /** Each die, e.g. "1d20 [~~4~~, 17] + 5 = **22**" (Discord markdown: struck dice don't count). */
+  text: string;
+  crit?: 'success' | 'fail';
+  /** The DM's own: never shown to players or posted. */
+  secret?: boolean;
 }
 
 /** A device that joined through the link. Only a hash of its token is kept. */
@@ -564,7 +587,11 @@ export type EncounterAction =
   /** A spell area; `by` is set for a player's (the DM's are "dm"). */
   | { type: 'template'; template: AreaTemplate; by?: string }
   /** Removes one spell area, or all of them; with `by`, only that person's. */
-  | { type: 'clearTemplate'; id?: string; by?: string };
+  | { type: 'clearTemplate'; id?: string; by?: string }
+  /** Rolls dice for the table; `by` is "dm" (the default) or a combatant id. */
+  | { type: 'roll'; expression: string; label?: string; by?: string; secret?: boolean }
+  /** Whether the table's rolls are posted to Discord too. */
+  | { type: 'postRolls'; on: boolean };
 
 // --- The player view (the public join link) ------------------------------------------------------
 
@@ -609,6 +636,8 @@ export interface PlayerView {
   /** Fog of war: the squares revealed (the map has nothing outside them), or null when it's off. */
   fog: string[] | null;
   templates: PlacedTemplate[];
+  /** The table's latest rolls (not the DM's secret ones). */
+  rolls: EncounterRoll[];
 }
 
 /** A spell area on the map: who placed it ("dm" or a combatant id). */
@@ -623,7 +652,9 @@ export type PlayerRequest =
   | { type: 'move'; at: Cell }
   /** Shows a spell area for everyone; I can remove only mine. */
   | { type: 'template'; template: AreaTemplate }
-  | { type: 'clearTemplate'; id: string };
+  | { type: 'clearTemplate'; id: string }
+  /** Rolls dice as my character, for the table to see. */
+  | { type: 'roll'; expression: string; label?: string };
 
 /**
  * The pictures a battle map gets from the art folder (#61), by asset id: the ground, floor and

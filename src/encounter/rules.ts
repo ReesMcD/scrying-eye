@@ -1,5 +1,6 @@
 import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell } from '../shared/battlemap.js';
 import { cellKey, readTemplate, roomAt, roomCells, visibleFrom } from '../shared/mapSight.js';
+import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
 import type { Combatant, CombatantKind, Condition, ConditionName, EncounterAction, EncounterOutcome, EncounterState } from '../shared/types.js';
 
 /** The 2024 conditions, in the order the tracker lists them. */
@@ -28,7 +29,12 @@ export interface RuleDeps {
   now: () => number;
   /** A d20 roll, 1–20. */
   d20: () => number;
+  /** Any die, for the table's rolls (default: the secure one). */
+  die?: RandomInt;
 }
+
+/** How many of the table's rolls are kept. */
+const KEPT_ROLLS = 30;
 
 export const abilityModifier = (score: number) => Math.floor((score - 10) / 2);
 
@@ -334,6 +340,41 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       s.templates = keep;
       break;
     }
+    case 'roll': {
+      const by = action.by ?? 'dm';
+      const roller = by === 'dm' ? null : find(by);
+      const label = typeof action.label === 'string' ? action.label.trim().slice(0, 60) : '';
+      const result = (() => {
+        try {
+          return rollDice(String(action.expression ?? '').slice(0, 100), deps.die ?? secureDie);
+        } catch (err) {
+          if (err instanceof DiceError) throw new EncounterError(err.message);
+          throw err;
+        }
+      })();
+      const rolls = s.rolls ?? [];
+      s.rolls = [
+        ...rolls,
+        {
+          id: `roll-${deps.now()}-${rolls.length}`,
+          at: deps.now(),
+          round: s.round,
+          by,
+          who: roller?.name ?? 'DM',
+          ...(label ? { label } : {}),
+          expression: result.expression,
+          total: result.total,
+          text: result.text,
+          ...(result.crit ? { crit: result.crit } : {}),
+          // A hidden monster's roll would give it away.
+          ...(action.secret || roller?.hidden ? { secret: true } : {}),
+        },
+      ].slice(-KEPT_ROLLS);
+      break;
+    }
+    case 'postRolls':
+      s.postRolls = action.on === true;
+      break;
     default:
       throw new EncounterError('Unknown action');
   }
