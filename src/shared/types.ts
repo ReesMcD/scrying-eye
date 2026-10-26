@@ -650,8 +650,10 @@ export interface DungeonRun {
   rooms: Array<WikiDungeonRoom & { state: RoomProgress; hintsShown: number; spawned?: boolean }>;
   /** The room the DM is looking at (usually where the party is). */
   current: string | null;
-  /** The fight going on now: which room it started in. */
-  fight: { room: string | null; startedAt: number } | null;
+  /** The fight going on now: which room it started in, and the prepared battle it's on, if any. */
+  fight: { room: string | null; startedAt: number; battle?: string } | null;
+  /** During a fight on a room's prepared battle map: the floor plan as it was left, to go back to. */
+  plan?: { map: BattleMap; fog?: EncounterState['fog'] };
   fights: DungeonFight[];
   /** Secret doors the party found: a square of each, with its level when deeper than 1. */
   secretDoorsFound?: Array<[number, number] | [number, number, number]>;
@@ -760,8 +762,11 @@ export type EncounterAction =
   | { type: 'clearTemplate'; id?: string; by?: string }
   /** Dungeons: look at a room, and mark what's happened there (entering one reveals it). */
   | { type: 'room'; key: string; entered?: boolean; cleared?: boolean; looted?: boolean; solved?: boolean; hintsShown?: number }
-  /** Dungeons: start the room's fight, its creatures placed in the room. */
-  | { type: 'fight'; room: string }
+  /**
+   * Dungeons: start the room's fight, its creatures placed in the room. `prepared`: on the room's
+   * own battle map from the wiki (#109), which the API fetches and passes on as `battle`.
+   */
+  | { type: 'fight'; room: string; prepared?: boolean; battle?: WikiEncounter }
   /** Dungeons: the fight is over; back to exploring. The fallen leave the map. */
   | { type: 'endFight' }
   /** Dungeons on several levels: the party takes these stairs (`index` in the plan's terrain) to the level they lead to. */

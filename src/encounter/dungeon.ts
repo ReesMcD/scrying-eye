@@ -1,6 +1,7 @@
 import { placeToken, readMap, SIZE_SQUARES, type BattleMap, type Cell, type Terrain, type TokenSize } from '../shared/battlemap.js';
 import { roomAt, roomCells, roomInView } from '../shared/mapSight.js';
-import type { Combatant, DungeonRun, EncounterAction, EncounterState, WikiDungeon } from '../shared/types.js';
+import type { Combatant, DungeonRun, EncounterAction, EncounterState, WikiDungeon, WikiEncounter } from '../shared/types.js';
+import { encounterFromWiki } from './wiki.js';
 import { applyAction, combatantId, EncounterError, makeCombatant, newEncounter, setRevealed, sortOrder, uniqueTokenId, type RuleDeps } from './rules.js';
 
 /**
@@ -113,6 +114,12 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
       if (s.status !== 'exploring') throw new EncounterError('Finish this fight first');
       const room = roomOf(run, action.room);
       onThisLevel(s, room);
+      if (action.prepared || action.battle) {
+        if (!action.battle) throw new EncounterError('The prepared battle comes from the wiki: start it from the room');
+        fightOnBattleMap(s, run, room, action.battle, deps);
+        startFight(s, run, room, deps, log, `Fight in ${room.key}. ${room.name}, on its prepared map (${action.battle.title})`, action.battle.title);
+        break;
+      }
       // Its creatures appear once; fighting there again carries on with whoever is still about.
       const groups = room.spawned ? [] : (room.encounter?.creatures ?? []);
       if (!groups.length && !s.combatants.some((c) => c.kind !== 'pc')) throw new EncounterError(room.spawned ? `Nothing is left to fight in ${room.name}` : `No creatures are listed for ${room.name}: add them with Add combatant, then start the fight`);
@@ -137,17 +144,8 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
           s.combatants.push(c);
         }
       }
-      // A new fight: everyone rolls initiative again.
-      for (const c of s.combatants) c.initiative = null;
-      s.status = 'setup';
-      s.round = 0;
-      s.turn = null;
-      s.order = sortOrder(s.combatants);
-      room.state.entered = true;
-      run.current = room.key;
-      run.fight = { room: room.key, startedAt: deps.now() };
       revealRoom(s, room.key);
-      log(`Fight in ${room.key}. ${room.name}`);
+      startFight(s, run, room, deps, log, `Fight in ${room.key}. ${room.name}`);
       break;
     }
     case 'endFight': {
@@ -158,6 +156,7 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
       const gone = new Set(fallen.map((c) => c.tokenId).filter(Boolean));
       s.combatants = s.combatants.filter((c) => !fallen.includes(c));
       if (s.map) s.map = { ...s.map, tokens: s.map.tokens.filter((t) => !gone.has(t.id)) };
+      if (run.plan) backToThePlan(s, run, run.plan);
       // Nothing left standing against the party: the room is cleared.
       if (run.fight.room && !s.combatants.some((c) => c.kind !== 'pc')) roomOf(run, run.fight.room).state.cleared = true;
       log(`Fight over after ${Math.max(0, s.round)} round${s.round === 1 ? '' : 's'}${fallen.length ? `: ${fallen.map((c) => c.name).join(', ')} defeated` : ''}`);
@@ -174,6 +173,72 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
       takeStairs(s, run, action.index, log);
       break;
   }
+}
+
+/** A new fight: everyone rolls initiative again. */
+function startFight(s: EncounterState, run: DungeonRun, room: DungeonRun['rooms'][number], deps: RuleDeps, log: (text: string) => void, text: string, battle?: string): void {
+  for (const c of s.combatants) c.initiative = null;
+  s.status = 'setup';
+  s.round = 0;
+  s.turn = null;
+  s.order = sortOrder(s.combatants);
+  room.state.entered = true;
+  run.current = room.key;
+  run.fight = { room: room.key, startedAt: deps.now(), ...(battle ? { battle } : {}) };
+  log(text);
+}
+
+/**
+ * The room's own battle (#109): the floor plan is put away and the fight happens on the room's
+ * prepared map, the party where the battle puts them and its creatures where it placed them.
+ */
+function fightOnBattleMap(s: EncounterState, run: DungeonRun, room: DungeonRun['rooms'][number], battle: WikiEncounter, deps: RuleDeps): void {
+  if (room.spawned) throw new EncounterError(`${room.name}'s creatures are already on the plan: fight them there`);
+  if (!s.map) throw new EncounterError('This dungeon has no map');
+  const cut = encounterFromWiki(battle, 'battle', deps.now());
+  if (!cut.map) throw new EncounterError(`"${battle.title}" has no map: fight on the floor plan instead`);
+  run.plan = { map: s.map, ...(s.fog ? { fog: s.fog } : {}) };
+  const where = (c: Combatant | undefined) => (c?.tokenId ? cut.map!.tokens.find((t) => t.id === c.tokenId)?.at : undefined);
+  let map: BattleMap = { ...cut.map, tokens: [] };
+  // The party: where the battle puts them, else along the map's west edge.
+  for (const pc of s.combatants.filter((c) => c.kind === 'pc' && c.tokenId)) {
+    const token = s.map.tokens.find((t) => t.id === pc.tokenId);
+    map = placeToken(map, { id: pc.tokenId!, name: pc.name, kind: 'pc', size: token?.size ?? 'medium' }, where(cut.combatants.find((c) => c.kind === 'pc' && c.name === pc.name)) ?? [0, Math.floor(map.height / 2)]);
+  }
+  const taken = new Set(s.combatants.map((c) => c.id));
+  for (const m of cut.combatants.filter((c) => c.kind !== 'pc')) {
+    const id = combatantId(m.name, taken);
+    taken.add(id);
+    const token = m.tokenId ? cut.map.tokens.find((t) => t.id === m.tokenId) : undefined;
+    const tokenId = uniqueTokenId(map, id);
+    map = placeToken(map, { id: tokenId, name: m.name, kind: m.kind, size: token?.size ?? 'medium', ...(m.hidden ? { hidden: true } : {}) }, token?.at ?? [map.width - 1, Math.floor(map.height / 2)]);
+    s.combatants.push({ ...m, id, tokenId });
+  }
+  Object.assign(s.statBlocks, cut.statBlocks);
+  room.spawned = true;
+  s.map = map;
+  // The room's map is all in view: no fog while the fight lasts.
+  delete s.fog;
+}
+
+/** After a fight on a room's battle map: the floor plan as it was, with whoever is left of the room's creatures in the room. */
+function backToThePlan(s: EncounterState, run: DungeonRun, plan: NonNullable<DungeonRun['plan']>): void {
+  let map = plan.map;
+  const area = run.fight?.room ? map.rooms?.find((r) => r.id === run.fight!.room) : undefined;
+  const cells = area ? roomCells(map, area) : [];
+  const spot: Cell = cells.at(-1) ?? [Math.floor(map.width / 2), Math.floor(map.height / 2)];
+  const onPlan = new Set(map.tokens.map((t) => t.id));
+  for (const c of s.combatants) {
+    if (c.kind === 'pc' || !c.tokenId || onPlan.has(c.tokenId)) continue;
+    const token = s.map?.tokens.find((t) => t.id === c.tokenId);
+    if (!token) continue;
+    const tokenId = uniqueTokenId(map, c.id);
+    map = placeToken(map, { ...token, id: tokenId }, spot);
+    c.tokenId = tokenId;
+  }
+  s.map = map;
+  if (plan.fog) s.fog = plan.fog;
+  delete run.plan;
 }
 
 /**

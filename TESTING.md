@@ -151,6 +151,7 @@ the Record page shows **Re-add the bot** until it's done.
 - [ ] Settings → Polls: a **Once** poll a few minutes ahead, open 1 hour, winner on. It posts on time; vote; after it closes, **See votes** shows them and the winner is posted.
 - [ ] Encounters: start one, roll from the tracker (and once with **Secret**), and from a phone on the players' link. The phone never shows the secret roll.
 - [ ] Optional: Settings → Encounters → **Suggest monsters' moves** on, then **Suggest a move** on a monster's turn.
+- [ ] A room with a saved battle (`wiki_battle` with `dungeon` + `room`): **Fight on its battle map** switches to that map (phones and the screen view too); **End fight** comes back to the floor plan with the party where they were.
 - [ ] A dungeon on two levels (`wiki_dungeon` with `levels: 2`): **Take the stairs** down and back up; the party comes out at the other end, each level keeps what they'd seen, and phones follow.
 - [ ] Table aids in a fight: drag a token past its speed, into a wall and onto someone (it lands; the label counts feet this turn and warns). Two PCs either side of a monster show **Flanked**. On a phone, drag a friend's token (works) and a monster (doesn't).
 - [ ] Players' link → **Screen view**: opens the map in 3D full-window; share it on Discord. It follows each turn, shows the order and rolls, and hides what the players can't see.
