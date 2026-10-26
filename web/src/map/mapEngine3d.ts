@@ -299,7 +299,8 @@ export class MapEngine3d {
     const iron = new THREE.MeshStandardMaterial({ color: 0x2b2724, roughness: 0.7, metalness: 0.4 });
     const wood = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 1 });
     const glow = glowTexture();
-    // Each light costs every lit surface some work: the nearest few to the middle are real lights.
+    // Each light costs every lit surface some work: braziers and fires first, then the biggest
+    // torches, are real lights; the rest only glow.
     const real = new Set(
       [...m.lights]
         .sort((a, b) => (a.kind === 'torch' ? 1 : 0) - (b.kind === 'torch' ? 1 : 0) || b.dim - a.dim)
