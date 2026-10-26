@@ -141,6 +141,18 @@ Needs `APP_PASSWORD` in `.env`.
 - [ ] On the phone, over Tailscale (README section F): the same pages work.
 - [ ] Press **Rebuild transcript** on a session. The log shows the job finishing.
 
+### 2.5 Discord extras and encounters (optional, 15 min)
+
+These need the bot re-added once for the new permissions (**Send Polls**, **Read Message History**):
+the Record page shows **Re-add the bot** until it's done.
+
+- [ ] In Discord: `/roll dice:1d20+5 label:Test`, `/rr count:3 dice:4d6kh3`, `/roll dice:banana` (only you see the error), and `/spell fireball`, `/monster goblin`, `/condition prone` (names autocomplete).
+- [ ] While recording: a public `/roll`. After **Stop**, the transcript shows `[roll] …` at that time.
+- [ ] Settings → Polls: a **Once** poll a few minutes ahead, open 1 hour, winner on. It posts on time; vote; after it closes, **See votes** shows them and the winner is posted.
+- [ ] Encounters: start one, roll from the tracker (and once with **Secret**), and from a phone on the players' link. The phone never shows the secret roll.
+- [ ] Optional: Settings → Encounters → **Suggest monsters' moves** on, then **Suggest a move** on a monster's turn.
+- [ ] A session's **Who's on each mic**: add a switch, save, and the transcript's names change from that time.
+
 ## 3. What to send back
 
 Paste these into this chat (the cloud session that built the code), or into a new one:
