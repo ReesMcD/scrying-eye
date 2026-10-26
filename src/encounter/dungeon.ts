@@ -1,5 +1,5 @@
 import { placeToken, readMap, SIZE_SQUARES, type BattleMap, type Cell, type TokenSize } from '../shared/battlemap.js';
-import { roomCells } from '../shared/mapSight.js';
+import { roomCells, roomInView } from '../shared/mapSight.js';
 import type { Combatant, DungeonRun, EncounterAction, EncounterState, WikiDungeon } from '../shared/types.js';
 import { applyAction, combatantId, EncounterError, makeCombatant, newEncounter, setRevealed, sortOrder, uniqueTokenId, type RuleDeps } from './rules.js';
 
@@ -70,7 +70,7 @@ function roomOf(run: DungeonRun, key: string) {
 /** Shows a room to the party on the map (when fog is on). */
 function revealRoom(s: EncounterState, key: string): void {
   const area = s.map?.rooms?.find((r) => r.id === key);
-  if (s.fog && s.map && area) setRevealed(s.fog, roomCells(s.map, area), true);
+  if (s.fog && s.map && area) setRevealed(s.fog, roomInView(s.map, area), true);
 }
 
 /** The room actions; `s` is already a copy (applyAction's). */

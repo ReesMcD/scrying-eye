@@ -1,5 +1,5 @@
 import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell } from '../shared/battlemap.js';
-import { cellKey, readTemplate, roomAt, roomCells, visibleFrom } from '../shared/mapSight.js';
+import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
 import { applyDungeonAction } from './dungeon.js';
 import type { Combatant, CombatantKind, Condition, ConditionName, EncounterAction, EncounterOutcome, EncounterState } from '../shared/types.js';
@@ -317,7 +317,8 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       const fog = requireFog(s);
       const room = roomAt(s.map!, action.at);
       if (!room) throw new EncounterError('That square isn’t in a room');
-      setRevealed(fog, roomCells(s.map!, room), !action.hide);
+      // Revealing shows its walls too; hiding takes back only the room itself (walls may border others).
+      setRevealed(fog, action.hide ? roomCells(s.map!, room) : roomInView(s.map!, room), !action.hide);
       break;
     }
     case 'template': {

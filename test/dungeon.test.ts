@@ -100,6 +100,7 @@ test('entering a room reveals it; flags and the hint ladder are kept', () => {
   let s = encounterFromDungeon(DUNGEON, 'd1', deps());
   s = run(s, [{ type: 'room', key: '2', entered: true }]);
   assert.ok(s.fog!.revealed.includes('13,4'), 'the crypt is shown on the map');
+  assert.ok(s.fog!.revealed.includes('17,4') && s.fog!.revealed.includes('13,0') && s.fog!.revealed.includes('9,4'), 'with its walls and door, not floor in the void');
   assert.equal(s.dungeon!.current, '2');
   s = run(s, [{ type: 'room', key: '2', hintsShown: 2 }, { type: 'room', key: '2', solved: true }]);
   const crypt = s.dungeon!.rooms[1]!;

@@ -57,6 +57,23 @@ export function roomCells(map: BattleMap, room: Room): Cell[] {
   return cellsOf({ kind: 'floor', ...(room.cells ? { cells: room.cells } : room.rect ? { rect: room.rect } : { polygon: room.polygon! }) }, map.width, map.height);
 }
 
+/**
+ * A room as seen when you're in it: its squares and the walls, doors and pillars around them
+ * (anything blocking sight next to it), so a revealed room isn't floor with no walls.
+ */
+export function roomInView(map: BattleMap, room: Room): Cell[] {
+  const inside = roomCells(map, room);
+  const blockers = sightBlockers(map);
+  const out = new Map(inside.map((c) => [key(c[0], c[1]), c]));
+  for (const [x, y] of inside)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const k = key(x + dx, y + dy);
+        if (!out.has(k) && blockers.has(k)) out.set(k, [x + dx, y + dy]);
+      }
+  return [...out.values()];
+}
+
 /** The room a square is in, if the map has rooms. */
 export function roomAt(map: BattleMap, at: Cell): Room | undefined {
   return map.rooms?.find((r) => roomCells(map, r).some(([x, y]) => x === at[0] && y === at[1]));
