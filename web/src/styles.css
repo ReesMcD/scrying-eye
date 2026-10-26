@@ -391,3 +391,9 @@ details > summary { cursor: pointer; }
 .roll.crit-fail .roll-total { color: var(--bad); }
 .dice-extra { margin-top: 10px; gap: 20px; }
 .dice-extra .toggle { margin-bottom: 0; }
+
+/* Who's on each mic (#71) */
+.mic { padding: 10px 0; border-top: 1px solid var(--border); }
+.mic-row { align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.mic-time { min-width: 120px; }
+.mic-time input { width: 96px; display: inline-block; }

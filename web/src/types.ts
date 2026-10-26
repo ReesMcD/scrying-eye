@@ -15,6 +15,7 @@ export type {
   EncounterStatBlock,
   EncounterState,
   TurnSuggestion,
+  TrackSwitch,
   JoinLink,
   WikiEncounter,
   WikiEncounterSummary,

@@ -1,7 +1,7 @@
 import type { Config } from '../config/schema.js';
 import type { SessionInfo } from '../session/layout.js';
 import type { EncounterOutcome, TranscriptLine, UnpairedSpeaker } from '../shared/types.js';
-import { campaignFor, othersBlock, partyBlock } from '../config/roster.js';
+import { campaignFor, othersBlock, partyBlock, rosterOverall } from '../config/roster.js';
 
 /** How the prompts should treat people who aren't on the roster yet, from the clean-up's guesses. */
 function unpairedLines(unpaired: readonly UnpairedSpeaker[]): string {
@@ -33,7 +33,7 @@ export function contextBlock(
   const date = new Intl.DateTimeFormat('en-US', { dateStyle: 'full', ...(timeZone ? { timeZone } : {}) }).format(session.startedAt);
   const campaign = campaignFor(config, session);
   const party = campaign?.characters.length ? partyBlock(campaign) : '';
-  const others = othersBlock(config, campaign, new Set(lines.map((l) => l.userId)));
+  const others = othersBlock(rosterOverall(config, session.tracks), campaign, new Set(lines.map((l) => l.userId)));
   return [
     '## About this call',
     '',

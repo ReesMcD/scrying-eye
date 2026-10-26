@@ -5,7 +5,7 @@ import { requirePassword, SignInLimiter, type PasswordSource } from './auth.js';
 import { ConfigStore } from './configStore.js';
 import { JobRunner, type Job, type JobStep } from './jobs.js';
 import { DEFAULT_PROMPTS_DIR, PROMPT_NAMES, checkTemplate, deletePrompt, readPrompts, writePrompt } from './promptStore.js';
-import { SESSION_FILES, knownAccounts, listSessions, sessionDetail, sessionDirFor, trashSession, updateSession } from './sessions.js';
+import { SESSION_FILES, knownAccounts, listSessions, sessionDetail, sessionDirFor, readTracks, trashSession, updateSession } from './sessions.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { paths } from '../session/layout.js';
 import type { PromptName } from '../summary/prompts.js';
@@ -76,21 +76,32 @@ export function createApi(opts: ApiOptions): Hono {
   // --- Sessions ---------------------------------------------------------------------------------
   api.get('/sessions', (c) => c.json(listSessions(opts.dataDir, opts.configStore.read().config)));
 
-  /** Rename a session or pick its campaign after the fact: { title?, campaign? }, null to go back to the default. */
+  /**
+   * Rename a session, pick its campaign, or say who was on which account, after the fact:
+   * { title?, campaign?, tracks? }; null (or no tracks) goes back to the default.
+   */
   api.patch('/sessions/:id', async (c) => {
     const id = c.req.param('id');
     const dir = sessionDirFor(opts.dataDir, id);
     if (!dir) return c.json({ error: 'not found' }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown; campaign?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { title?: unknown; campaign?: unknown; tracks?: unknown };
     const pick = (v: unknown) => (v === null || typeof v === 'string' ? v : undefined);
     const config = opts.configStore.read().config;
     try {
-      updateSession(dir, { ...(pick(body.title) !== undefined ? { title: pick(body.title) } : {}), ...(pick(body.campaign) !== undefined ? { campaign: pick(body.campaign) } : {}) }, config);
+      updateSession(
+        dir,
+        {
+          ...(pick(body.title) !== undefined ? { title: pick(body.title) } : {}),
+          ...(pick(body.campaign) !== undefined ? { campaign: pick(body.campaign) } : {}),
+          ...(body.tracks !== undefined ? { tracks: readTracks(body.tracks, config) } : {}),
+        },
+        config,
+      );
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);
     }
-    // The transcript's names follow the campaign's roster.
-    if (body.campaign !== undefined && existsSync(paths.transcriptsDir(dir))) opts.jobs.enqueue(id, 'merge');
+    // The transcript's names follow the campaign's roster and who was on each account.
+    if ((body.campaign !== undefined || body.tracks !== undefined) && existsSync(paths.transcriptsDir(dir))) opts.jobs.enqueue(id, 'merge');
     return c.json({ ...sessionDetail(opts.dataDir, id, config)!, jobs: opts.jobs.list(id) });
   });
 

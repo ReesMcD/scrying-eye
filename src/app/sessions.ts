@@ -8,7 +8,7 @@ import type { TranscriptLine } from '../transcript/merge.js';
 import { readEditState, recapState } from '../summary/recapEdits.js';
 import { uploadStatus } from '../upload/recapUpload.js';
 import { summaryPaths, type SummaryMeta } from '../summary/summarizeSession.js';
-import type { DiscordAccount, GuildInfo, SessionDetail, SessionSummary } from '../shared/types.js';
+import type { DiscordAccount, GuildInfo, SessionDetail, SessionSummary, TrackSwitch } from '../shared/types.js';
 import type { Config } from '../config/schema.js';
 import { pendingUnpaired } from './unpaired.js';
 
@@ -118,6 +118,7 @@ export function sessionDetail(dataDir: string, id: string, config: Config | null
   return {
     ...base,
     participants: readParticipants(dir),
+    tracks: readSessionInfo(dir).tracks ?? [],
     lines: segmentsOf(dir, paths.segments(dir)).lines,
     speakerLines: existsSync(paths.disambiguatedSegments(dir)) ? segmentsOf(dir, paths.disambiguatedSegments(dir)).lines : null,
     summary: existsSync(summaryFile) ? readFileSync(summaryFile, 'utf8') : null,
@@ -130,11 +131,28 @@ export function sessionDetail(dataDir: string, id: string, config: Config | null
   };
 }
 
+const MAX_SWITCHES = 100;
+
+/** Who's-on-which-account changes sent by the session page, checked: real speakers, sane times, one entry per account and time. */
+export function readTracks(raw: unknown, config: Config | null): TrackSwitch[] {
+  if (!Array.isArray(raw) || raw.length > MAX_SWITCHES) throw new Error(`Send up to ${MAX_SWITCHES} changes of who's on each account`);
+  const speakers = settings(config).speakers;
+  const byKey = new Map<string, TrackSwitch>();
+  for (const t of raw as Array<Partial<TrackSwitch>>) {
+    if (typeof t?.account !== 'string' || !t.account || t.account.length > 40) throw new Error('Each change needs the Discord account');
+    if (typeof t.fromMs !== 'number' || !Number.isInteger(t.fromMs) || t.fromMs < 0 || t.fromMs > 48 * 3_600_000) throw new Error('A change needs a time within the session');
+    if (!Array.isArray(t.speakers) || t.speakers.some((id) => typeof id !== 'string' || !speakers[id])) throw new Error('No such speaker');
+    byKey.set(`${t.account}@${t.fromMs}`, { account: t.account, fromMs: t.fromMs, speakers: [...new Set(t.speakers as string[])] });
+  }
+  return [...byKey.values()].sort((a, b) => a.account.localeCompare(b.account) || a.fromMs - b.fromMs);
+}
+
 /**
- * Renames a session or picks its campaign, after the fact. null puts either back: the name to the
- * sessions.title template, the campaign to the voice channel's default. The folder (and id) never change.
+ * Renames a session, picks its campaign, or says who was on which account, after the fact. null
+ * puts the name back to the sessions.title template and the campaign to the voice channel's
+ * default; an empty `tracks` puts the settings back. The folder (and id) never change.
  */
-export function updateSession(dir: string, change: { title?: string | null; campaign?: string | null }, config: Config | null): void {
+export function updateSession(dir: string, change: { title?: string | null; campaign?: string | null; tracks?: TrackSwitch[] }, config: Config | null): void {
   const info = readSessionInfo(dir);
   const next: SessionInfo = { ...info };
   if (change.title !== undefined) {
@@ -146,6 +164,10 @@ export function updateSession(dir: string, change: { title?: string | null; camp
     if (change.campaign && !settings(config).campaigns[change.campaign]) throw new Error('No such campaign');
     if (change.campaign) next.campaign = change.campaign;
     else delete next.campaign;
+  }
+  if (change.tracks !== undefined) {
+    if (change.tracks.length) next.tracks = change.tracks;
+    else delete next.tracks;
   }
   writeJson(paths.session(dir), next);
 }

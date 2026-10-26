@@ -11,7 +11,7 @@ import { disambiguateLines, disambiguateSession } from '../src/summary/disambigu
 import { AnthropicSummaryModel, type Labels } from '../src/summary/model.js';
 import { FakeModel } from './helpers/fakeModel.js';
 import { summarizeSession, summaryPaths } from '../src/summary/summarizeSession.js';
-import { mergeSegments, type TranscriptLine } from '../src/transcript/merge.js';
+import { mergeSegments, namer, type TranscriptLine } from '../src/transcript/merge.js';
 
 const T0 = Date.UTC(2026, 8, 26, 0);
 const REES = '111111111111111111';
@@ -75,9 +75,9 @@ test('merge keeps shared-account lines separate so each can be relabelled', () =
     [REES, [seg(0, 'One.'), seg(1.5, 'Two.')]],
     [SAM, [seg(10, 'A.'), seg(11.5, 'B.')]],
   ]);
-  const opts = { sessionStartMs: T0, aliases: { [REES]: 'Rees' }, participants: {}, mergeGapMs: 2000, maxLineMs: 60_000 };
+  const opts = { sessionStartMs: T0, nameFor: namer({ aliases: { [REES]: 'Rees' }, participants: {} }), mergeGapMs: 2000, maxLineMs: 60_000 };
   assert.equal(mergeSegments(bySpeaker, opts).length, 2);
-  assert.equal(mergeSegments(bySpeaker, { ...opts, noJoin: new Set([REES]) }).length, 3);
+  assert.equal(mergeSegments(bySpeaker, { ...opts, keepApart: (l) => l.userId === REES }).length, 3);
 });
 
 test('relabels shared-account lines, tags guesses and unclear lines, leaves everyone else alone', async () => {

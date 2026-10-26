@@ -24,6 +24,19 @@ export interface SessionInfo {
   title?: string;
   /** The campaign picked for this session (its key in `campaigns`); wins over the voice channel's. */
   campaign?: string;
+  /** Who was on which Discord account in this session, where it differs from the settings (#71). */
+  tracks?: TrackSwitch[];
+}
+
+/**
+ * From `fromMs` (from the session's start) on, `account` carries these speakers (keys in
+ * `speakers`): "Sam was on Rees's mic from 1:10:00". Before an account's first entry, the
+ * settings apply. No speakers: nobody we know (the account's Discord name is used).
+ */
+export interface TrackSwitch {
+  account: string;
+  fromMs: number;
+  speakers: string[];
 }
 
 export interface Participant {
@@ -72,6 +85,8 @@ export interface SessionSummary {
 
 export interface SessionDetail extends SessionSummary {
   participants: Record<string, Participant>;
+  /** This session's changes to who's on each account (empty: the settings apply throughout). */
+  tracks: TrackSwitch[];
   lines: TranscriptLine[];
   speakerLines: TranscriptLine[] | null;
   summary: string | null;
