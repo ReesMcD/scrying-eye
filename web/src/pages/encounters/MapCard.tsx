@@ -1,26 +1,26 @@
 import { useState } from 'react';
 import { api, apiBlob } from '../../api';
-import { doorsAt, isDifficult, type Cell, type MapToken } from '../../../../src/shared/battlemap';
+import { doorsAt, isDifficult, secretDoorsAt, type BattleMap, type Cell, type MapToken } from '../../../../src/shared/battlemap';
+import { cellKey, roomAt } from '../../../../src/shared/mapSight';
+import { useAreaTool } from '../../map/AreaTool';
 import { BattleMapView, type TokenInfo } from '../../map/BattleMapView';
 import { useArtPlan } from '../../map/useArtPlan';
 import type { ArtPlan, EncounterAction, EncounterState } from '../../types';
 import { Segmented } from '../../ui';
 
 type Act = (action: EncounterAction) => Promise<void>;
-type Tool = 'move' | 'doors' | 'difficult';
+type Tool = 'move' | 'doors' | 'difficult' | 'fog';
 
 const NEXT_DOOR_STATE = { open: 'closed', closed: 'locked', locked: 'open' } as const;
 
-/** The DM's battle map: move any token, work doors, mark difficult ground, put combatants on the map. */
+/** The DM's battle map, or a way to add a blank one. */
 export function MapCard({ state, act, onSelect }: { state: EncounterState; act: Act; onSelect: (combatantId: string) => void }) {
-  const [tool, setTool] = useState<Tool>('move');
-  const [placing, setPlacing] = useState<string | null>(null);
-  const [size, setSize] = useState({ width: '20', height: '15' });
-  const map = state.map;
-  const art = useArtPlan(map, () => api<ArtPlan | null>('/encounter/art'));
+  return state.map ? <MapBoard state={state} map={state.map} act={act} onSelect={onSelect} /> : <NoMap act={act} />;
+}
 
-  if (!map)
-    return (
+function NoMap({ act }: { act: Act }) {
+  const [size, setSize] = useState({ width: '20', height: '15' });
+  return (
       <details className="card">
         <summary>
           <strong>Battle map</strong> <span className="muted small">none yet</span>
@@ -38,7 +38,25 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
           </button>
         </div>
       </details>
-    );
+  );
+}
+
+/**
+ * Move any token, work doors (and find secret ones), mark difficult ground, reveal the fog, place
+ * spell areas and measure, and put combatants on the map.
+ */
+function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: BattleMap; act: Act; onSelect: (combatantId: string) => void }) {
+  const [tool, setTool] = useState<Tool>('move');
+  const [placing, setPlacing] = useState<string | null>(null);
+  const art = useArtPlan(map, () => api<ArtPlan | null>('/encounter/art'));
+  const area = useAreaTool({
+    map,
+    templates: state.templates ?? [],
+    me: 'dm',
+    onPlace: (template) => void act({ type: 'template', template }),
+    onClear: (id) => void act({ type: 'clearTemplate', id }),
+  });
+  const revealed = new Set(state.fog?.revealed ?? []);
 
   const byToken = new Map(state.combatants.filter((c) => c.tokenId).map((c) => [c.tokenId!, c]));
   const info: Record<string, TokenInfo> = {};
@@ -55,6 +73,11 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
       return;
     }
     if (tool === 'doors') {
+      const [secret] = secretDoorsAt(map, at);
+      if (secret !== undefined) {
+        void act({ type: 'secretDoor', index: secret });
+        return;
+      }
       const [door] = doorsAt(map, at);
       if (door !== undefined) {
         const current = map.terrain[door]!.state ?? 'closed';
@@ -64,6 +87,12 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
     }
     if (tool === 'difficult') {
       void act({ type: 'difficult', at, on: !isDifficult(map, at) });
+      return;
+    }
+    if (tool === 'fog') {
+      // In a room: the whole room. Elsewhere: the square.
+      const hide = revealed.has(cellKey(at));
+      void act(roomAt(map, at) ? { type: 'fogRoom', at, hide } : { type: 'fogCells', cells: [at], hide });
       return;
     }
     const c = token ? byToken.get(token.id) : undefined;
@@ -79,6 +108,7 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
             { value: 'move', label: 'Move' },
             { value: 'doors', label: 'Doors' },
             { value: 'difficult', label: 'Difficult' },
+            { value: 'fog', label: 'Fog' },
           ]}
           onChange={(t) => (setTool(t), setPlacing(null))}
         />
@@ -93,10 +123,39 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
           </span>
         )}
       </div>
+      {tool === 'fog' && (
+        <div className="map-tools">
+          {state.fog ? (
+            <>
+              <label className="row small">
+                <input type="checkbox" checked={state.fog.follow} onChange={(e) => void act({ type: 'fog', on: true, follow: e.target.checked })} />
+                Reveal what the party sees
+              </label>
+              <button type="button" onClick={() => void act({ type: 'fogCells', cells: allCells(map) })}>
+                Reveal all
+              </button>
+              <button type="button" onClick={() => void act({ type: 'fogCells', cells: allCells(map), hide: true })}>
+                Hide all
+              </button>
+              <button type="button" className="link danger" onClick={() => void act({ type: 'fog', on: false })}>
+                Turn off fog
+              </button>
+            </>
+          ) : (
+            <button type="button" className="primary" onClick={() => void act({ type: 'fog', on: true, follow: true })}>
+              Turn on fog of war
+            </button>
+          )}
+        </div>
+      )}
+      {area.controls}
       <BattleMapView
         map={map}
         info={info}
-        canMove={() => tool === 'move' && !placing}
+        fog={state.fog ? { revealed, solid: false } : null}
+        overlays={area.overlays}
+        {...(area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}
+        canMove={() => tool === 'move' && !placing && !area.active}
         onMove={(token, at) => void act({ type: 'move', token, at })}
         onTap={onTap}
         showNotes
@@ -107,8 +166,14 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
       <p className="muted small map-hint">
         {placingName
           ? `Tap a square to put ${placingName} there.`
-          : tool === 'doors'
-            ? 'Tap a door: open → closed → locked.'
+          : area.active
+            ? 'Drag on the map: from the centre (sphere) or the point of origin (cone, line, cube). Everyone sees areas; a measure is only yours.'
+            : tool === 'doors'
+            ? 'Tap a door: open → closed → locked. Tap a secret door (dashed) when the party finds it.'
+            : tool === 'fog'
+              ? state.fog
+                ? `Tap a square (or a room${map.rooms?.length ? ', by its key' : ''}) to reveal it or hide it again. Shaded: players can't see it.`
+                : 'Players see only what you reveal, or what the party can see.'
             : tool === 'difficult'
               ? 'Tap a square to mark or clear difficult terrain.'
               : 'Drag a token to move it; tap one for its details. Pinch or scroll to zoom.'}
@@ -118,3 +183,8 @@ export function MapCard({ state, act, onSelect }: { state: EncounterState; act: 
   );
 }
 
+function allCells(map: BattleMap): Cell[] {
+  const out: Cell[] = [];
+  for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) out.push([x, y]);
+  return out;
+}

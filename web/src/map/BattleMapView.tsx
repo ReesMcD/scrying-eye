@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { canPlace, cellsOf, distanceFeet, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken, type Terrain } from '../../../src/shared/battlemap';
+import { roomCells } from '../../../src/shared/mapSight';
 import type { ArtPlan } from '../../../src/shared/types';
 import './map.css';
 
@@ -31,6 +32,20 @@ interface Props {
   /** Pictures from the DM's art folder, and how to fetch one. Without them the map is drawn plainly. */
   art?: ArtPlan | null;
   loadArt?: (id: string) => Promise<Blob>;
+  /** Fog of war: squares not revealed are dark (players: solid; the DM: shaded, to see through). */
+  fog?: { revealed: ReadonlySet<string>; solid: boolean } | null;
+  /** Shaded areas on top (spell areas, a measure), each with an optional label. */
+  overlays?: Overlay[];
+  /** When set, a drag on the map reports grid corners (placing an area, measuring) instead of panning. */
+  onCornerDrag?: (from: Cell, to: Cell, done: boolean) => void;
+}
+
+export interface Overlay {
+  cells: Cell[];
+  tone: 'accent' | 'warn' | 'bad';
+  label?: string;
+  /** A line from one grid corner to another (a measure, a cone's aim). */
+  line?: [Cell, Cell];
 }
 
 /** Decoded pictures, shared by every map on the page (ids are stable per file). */
@@ -38,7 +53,10 @@ const images = new Map<string, ImageBitmap | 'loading' | 'failed'>();
 
 type View = { scale: number; ox: number; oy: number };
 type Drag = { pointer: number; tokenId: string; from: Cell; to: Cell; startX: number; startY: number; moved: boolean };
-type Gesture = { kind: 'pan'; pointer: number; startX: number; startY: number; view: View; moved: boolean } | { kind: 'pinch'; distance: number; mid: [number, number]; view: View };
+type Gesture =
+  | { kind: 'pan'; pointer: number; startX: number; startY: number; view: View; moved: boolean }
+  | { kind: 'pinch'; distance: number; mid: [number, number]; view: View }
+  | { kind: 'corner'; pointer: number; from: Cell; to: Cell; startX: number; startY: number; moved: boolean };
 
 const DRAW_ORDER: Terrain['kind'][] = ['floor', 'elevation', 'water', 'difficult', 'cover', 'object', 'wall', 'door'];
 const TAP_SLOP = 6;
@@ -123,7 +141,7 @@ export function BattleMapView(props: Props) {
     }
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    const { map, info, selected, showNotes, art } = latest.current;
+    const { map, info, selected, showNotes, art, fog, overlays } = latest.current;
     const picture = (id: string | undefined) => {
       const img = id ? images.get(id) : undefined;
       return img && img !== 'loading' && img !== 'failed' ? img : undefined;
@@ -187,11 +205,55 @@ export function BattleMapView(props: Props) {
     ctx.stroke();
 
     if (showNotes) {
+      // The DM's view: room keys and secret doors.
+      for (const room of map.rooms ?? []) {
+        const cells = roomCells(map, room);
+        if (!cells.length) continue;
+        const x0 = Math.min(...cells.map((c) => c[0]));
+        const y0 = Math.min(...cells.map((c) => c[1]));
+        label(ctx, room.name ? `${room.id}. ${room.name}` : room.id, x0 * s + 4, y0 * s + 13, colors, colors.warn, 'left');
+      }
+      map.terrain.forEach((t) => {
+        if (!t.secret) return;
+        ctx.strokeStyle = colors.warn;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        for (const [x, y] of cellsOf(t, map.width, map.height)) ctx.strokeRect(x * s + 3, y * s + 3, s - 6, s - 6);
+        ctx.setLineDash([]);
+      });
       for (const n of map.notes) {
         ctx.fillStyle = colors.warn;
         ctx.beginPath();
         ctx.arc((n.at[0] + 0.85) * s, (n.at[1] + 0.15) * s, Math.max(3, s * 0.12), 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // Fog over the map but under the tokens the viewer may see (a player's map has none under it).
+    if (fog) {
+      ctx.fillStyle = fog.solid ? colors.fog : 'rgba(0,0,0,0.45)';
+      for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) if (!fog.revealed.has(`${x},${y}`)) ctx.fillRect(x * s, y * s, s + 0.5, s + 0.5);
+    }
+
+    for (const o of overlays ?? []) {
+      const tone = colors[o.tone];
+      ctx.fillStyle = tone;
+      ctx.globalAlpha = 0.28;
+      for (const [x, y] of o.cells) ctx.fillRect(x * s, y * s, s, s);
+      ctx.globalAlpha = 1;
+      if (o.line) {
+        ctx.strokeStyle = tone;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(o.line[0][0] * s, o.line[0][1] * s);
+        ctx.lineTo(o.line[1][0] * s, o.line[1][1] * s);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (o.label) {
+        const at = o.line?.[1] ?? o.cells[0];
+        if (at) label(ctx, o.label, at[0] * s, at[1] * s - 14, colors);
       }
     }
 
@@ -220,16 +282,7 @@ export function BattleMapView(props: Props) {
         ctx.stroke();
         ctx.setLineDash([]);
         paintToken(ctx, t, d.to, s, info[t.id], colors, { invalid: !ok });
-        const label = `${distanceFeet(d.from, d.to)} ft`;
-        ctx.font = `600 ${Math.max(11, Math.min(16, s * 0.4))}px system-ui, sans-serif`;
-        const tw = ctx.measureText(label).width;
-        const lx = d.to[0] * s + half - tw / 2 - 6;
-        const ly = d.to[1] * s - 26;
-        ctx.fillStyle = colors.surface;
-        ctx.fillRect(lx, ly, tw + 12, 20);
-        ctx.fillStyle = ok ? colors.text : colors.bad;
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, lx + 6, ly + 10);
+        label(ctx, `${distanceFeet(d.from, d.to)} ft`, d.to[0] * s + half, d.to[1] * s - 16, colors, ok ? undefined : colors.bad);
       }
     }
   };
@@ -288,10 +341,13 @@ export function BattleMapView(props: Props) {
       redraw();
       return;
     }
-    const { map, canMove } = latest.current;
+    const { map, canMove, onCornerDrag } = latest.current;
     const cell = cellAt(p);
     const t = tokenAt(map, cell);
-    if (t && canMove(t.id)) drag.current = { pointer: e.pointerId, tokenId: t.id, from: t.at, to: t.at, startX: p[0], startY: p[1], moved: false };
+    if (onCornerDrag) {
+      const corner = cornerAt(p);
+      gesture.current = { kind: 'corner', pointer: e.pointerId, from: corner, to: corner, startX: p[0], startY: p[1], moved: false };
+    } else if (t && canMove(t.id)) drag.current = { pointer: e.pointerId, tokenId: t.id, from: t.at, to: t.at, startX: p[0], startY: p[1], moved: false };
     else gesture.current = { kind: 'pan', pointer: e.pointerId, startX: p[0], startY: p[1], view: { ...view.current }, moved: false };
   };
 
@@ -326,6 +382,15 @@ export function BattleMapView(props: Props) {
       view.current = { ...g.view, ox: g.view.ox + p[0] - g.startX, oy: g.view.oy + p[1] - g.startY };
       redraw();
     }
+    if (g?.kind === 'corner' && g.pointer === e.pointerId) {
+      if (!g.moved && Math.hypot(p[0] - g.startX, p[1] - g.startY) < TAP_SLOP) return;
+      g.moved = true;
+      const to = cornerAt(p);
+      if (to[0] !== g.to[0] || to[1] !== g.to[1]) {
+        g.to = to;
+        latest.current.onCornerDrag?.(g.from, to, false);
+      }
+    }
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -349,6 +414,18 @@ export function BattleMapView(props: Props) {
       gesture.current = null;
       if (!g.moved && p) tap(p);
     }
+    if (g?.kind === 'corner' && g.pointer === e.pointerId) {
+      gesture.current = null;
+      if (g.moved) latest.current.onCornerDrag?.(g.from, g.to, true);
+      else if (p) tap(p);
+    }
+  };
+
+  /** The grid corner nearest a point (areas and measures start and end on corners). */
+  const cornerAt = ([px, py]: [number, number]): Cell => {
+    const { scale, ox, oy } = view.current;
+    const { map } = latest.current;
+    return [Math.max(0, Math.min(map.width, Math.round((px - ox) / scale))), Math.max(0, Math.min(map.height, Math.round((py - oy) / scale)))];
   };
 
   const tap = (p: [number, number]) => {
@@ -392,7 +469,22 @@ export function BattleMapView(props: Props) {
 
 const centre = (el: HTMLElement | null): [number, number] => [(el?.clientWidth ?? 0) / 2, (el?.clientHeight ?? 0) / 2];
 
-type Palette = Record<'surface' | 'text' | 'muted' | 'accent' | 'good' | 'warn' | 'bad' | 'grid' | 'ground', string>;
+type Palette = Record<'surface' | 'text' | 'muted' | 'accent' | 'good' | 'warn' | 'bad' | 'grid' | 'ground' | 'fog', string>;
+
+/** A small label on a background, centred on x (or starting at x). */
+function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, p: Palette, color?: string, align: 'center' | 'left' = 'center') {
+  ctx.font = '600 13px system-ui, sans-serif';
+  const tw = ctx.measureText(text).width;
+  const left = align === 'center' ? x - tw / 2 : x + 6;
+  ctx.fillStyle = p.surface;
+  ctx.globalAlpha = 0.9;
+  ctx.fillRect(left - 6, y - 10, tw + 12, 20);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = color ?? p.text;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, left, y);
+}
 
 /** The app's colours (light or dark), read from its CSS custom properties. */
 function palette(el: HTMLElement): Palette {
@@ -408,6 +500,7 @@ function palette(el: HTMLElement): Palette {
     bad: v('--bad', '#ff7a85'),
     grid: v('--map-grid', 'rgba(127,127,127,0.25)'),
     ground: v('--map-ground', '#1b2130'),
+    fog: v('--map-fog', '#05060a'),
   };
 }
 
@@ -422,6 +515,7 @@ const GROUND: Record<string, string> = {
   cave: '#4a4740',
   mud: '#5d4a35',
   water: '#3f6f9a',
+  rock: '#2b2a28',
 };
 
 function groundColor(ground: string | undefined, p: Palette): string {
@@ -475,7 +569,8 @@ function paintCell(ctx: CanvasRenderingContext2D, t: Terrain, x: number, y: numb
       ctx.globalAlpha = 1;
       break;
     case 'door': {
-      ctx.fillStyle = groundColor(undefined, p);
+      // A door sits in a wall: draw it on a plain floor, whatever the map's ground.
+      ctx.fillStyle = GROUND.stone!;
       ctx.fillRect(px, py, s, s);
       ctx.fillStyle = '#a0703c';
       if (t.state === 'open') {

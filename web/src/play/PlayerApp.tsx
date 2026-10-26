@@ -3,6 +3,7 @@ import type { ConditionName, PlayerCombatant, PlayerView } from '../../../src/sh
 import { OrbMark } from '../icons';
 import { BattleMapView, type TokenInfo } from '../map/BattleMapView';
 import { useArtPlan } from '../map/useArtPlan';
+import { useAreaTool } from '../map/AreaTool';
 import { device, follow, play, PlayError } from './client';
 
 const CONDITIONS: ConditionName[] = ['Blinded', 'Charmed', 'Deafened', 'Exhaustion', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
@@ -153,10 +154,17 @@ function Fight({ view, act }: { view: PlayerView; act: (r: Parameters<typeof pla
   );
 }
 
-/** The map: everyone visible, the party's HP, and my own token to drag. */
+/** The map: what's revealed, the party's HP, my own token to drag, and spell areas. */
 function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof play.act>[0]) => Promise<void> }) {
   const map = view.map!;
   const art = useArtPlan(map, play.art);
+  const area = useAreaTool({
+    map,
+    templates: view.templates,
+    me: view.me ?? 'guest',
+    onPlace: (template) => void act({ type: 'template', template }),
+    onClear: (id) => void act({ type: 'clearTemplate', id }),
+  });
   const myToken = view.me ? view.tokens[view.me] : undefined;
   const info: Record<string, TokenInfo> = {};
   for (const c of view.order) {
@@ -166,16 +174,28 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
   return (
     <section aria-label="Battle map">
       <h2>Map</h2>
+      {view.me && area.controls}
       <BattleMapView
         map={map}
         info={info}
-        canMove={(t) => t === myToken}
+        canMove={(t) => t === myToken && !area.active}
         onMove={(_, at) => void act({ type: 'move', at })}
+        fog={view.fog ? { revealed: new Set(view.fog), solid: true } : null}
+        overlays={area.overlays}
+        {...(view.me && area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}
         art={art}
         loadArt={play.artImage}
         label={`Battle map, ${map.width} by ${map.height} squares`}
       />
-      <p className="muted small map-hint">{myToken ? 'Drag your token (ringed) to move. Pinch to zoom, drag the map to look around.' : view.me ? 'The DM hasn’t put you on the map yet.' : 'Pinch to zoom, drag to look around.'}</p>
+      <p className="muted small map-hint">
+        {area.active
+          ? 'Drag on the map to place your spell’s area (everyone sees it) or to measure.'
+          : myToken
+            ? 'Drag your token (ringed) to move. Pinch to zoom, drag the map to look around.'
+            : view.me
+              ? 'The DM hasn’t put you on the map yet.'
+              : 'Pinch to zoom, drag to look around.'}
+      </p>
     </section>
   );
 }
