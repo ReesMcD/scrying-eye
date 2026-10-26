@@ -21,6 +21,7 @@ import { configObject, configSchema } from '../config/schema.js';
 import { encounterRoutes } from './encounterRoutes.js';
 import { EncounterStore } from '../encounter/store.js';
 import { WikiEncounters } from '../encounter/wiki.js';
+import { WikiDungeons } from '../encounter/dungeonWiki.js';
 import { ClaudeTurnAdvisor, type TurnAdvisor } from '../encounter/assistant.js';
 import { PollService } from '../polls/PollService.js';
 import { pollRoutes } from './pollRoutes.js';
@@ -53,6 +54,8 @@ export interface ApiOptions {
   turnAdvisor?: TurnAdvisor;
   /** The wiki's encounters (default: from the upload settings and WIKI_UPLOAD_TOKEN). */
   wikiEncounters?: WikiEncounters;
+  /** The wiki's dungeons (default: the same wiki and key). */
+  wikiDungeons?: WikiDungeons;
   /** Battle map art from the folder in the settings (default: one reading the settings). */
   mapArt?: MapArt;
   /** Scheduled Discord polls (default: kept in dataDir, posting through `bot`). */
@@ -70,6 +73,11 @@ export function pollServiceFor(dataDir: string, configStore: ConfigStore, bot: B
 /** The wiki's encounters, from the same address and key as recap uploads. */
 export function wikiEncountersFor(dataDir: string, configStore: ConfigStore, doFetch?: typeof fetch): WikiEncounters {
   return new WikiEncounters(dataDir, () => configSchema.parse(configStore.read().config ?? {}), () => process.env[UPLOAD_TOKEN_ENV], doFetch);
+}
+
+/** The wiki's dungeons, from the same address and key. */
+export function wikiDungeonsFor(dataDir: string, configStore: ConfigStore, doFetch?: typeof fetch): WikiDungeons {
+  return new WikiDungeons(dataDir, () => configSchema.parse(configStore.read().config ?? {}), () => process.env[UPLOAD_TOKEN_ENV], doFetch);
 }
 
 const STEPS: JobStep[] = ['transcribe', 'merge', 'disambiguate', 'summarize', 'upload'];
@@ -297,23 +305,23 @@ export function createApi(opts: ApiOptions): Hono {
   api.route('/', pollRoutes(opts.polls ?? pollServiceFor(opts.dataDir, opts.configStore, opts.bot), { timeZone: () => pollTimeZone(opts.configStore), targets: () => opts.bot?.pollTargets?.() ?? { channels: [], roles: [] } }));
   api.route(
     '/',
-    encounterRoutes(
-      encounters,
-      wikiEncounters,
-      () => {
+    encounterRoutes(encounters, {
+      wiki: wikiEncounters,
+      dungeons: opts.wikiDungeons ?? wikiDungeonsFor(opts.dataDir, opts.configStore, opts.httpFetch),
+      links: () => {
         const players = configSchema.parse(opts.configStore.read().config ?? {}).players;
         return { publicUrl: players.public_url, port: players.port };
       },
-      opts.httpFetch,
-      opts.bot,
-      () => {
+      ...(opts.httpFetch ? { doFetch: opts.httpFetch } : {}),
+      ...(opts.bot ? { bot: opts.bot } : {}),
+      advisor: () => {
         const config = configSchema.parse(opts.configStore.read().config ?? {});
         if (!config.encounters.assistant) return { off: 'Monster-turn suggestions are off: turn them on under Settings → Encounters' };
         if (opts.turnAdvisor) return opts.turnAdvisor;
         if (!process.env.ANTHROPIC_API_KEY) return { off: 'Add your Anthropic key under Settings → Keys first' };
         return new ClaudeTurnAdvisor(config.summary.model);
       },
-    ),
+    }),
   );
 
   // --- Config -----------------------------------------------------------------------------------

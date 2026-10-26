@@ -6,13 +6,17 @@ import type { EncounterAction } from '../shared/types.js';
 import type { BotControl } from '../bot/types.js';
 import { joinPost } from '../bot/encounterCommand.js';
 import { turnPrompt, type TurnAdvisor } from '../encounter/assistant.js';
+import { encounterFromDungeon } from '../encounter/dungeon.js';
+import type { WikiDungeons } from '../encounter/dungeonWiki.js';
 
 /**
  * The DM's encounter API (behind the app password):
  *   GET  /encounters/wiki[?campaign=]       prepared encounters in the wiki
  *   GET  /encounters/wiki/:id[?campaign=]   one, to preview
+ *   GET  /encounters/dungeons[?campaign=]   dungeons in the wiki
+ *   GET  /encounters/dungeons/:id           one, to preview
  *   GET  /encounter                          the one running, or null
- *   POST /encounter                          start: { wikiId, campaign? } or { title }
+ *   POST /encounter                          start: { wikiId, campaign? }, { dungeonId, campaign? } or { title }
  *   POST /encounter/actions                  one change (EncounterAction)
  *   POST /encounter/end                      end it; answers with the summary
  *   GET  /encounter/link                     the players' join link
@@ -33,7 +37,18 @@ export const publicJoinUrl = (links: JoinLinks, code: string) => (links.publicUr
 /** The monster-turn assistant, or why it can't run (off in Settings, no key). */
 export type AdvisorSource = () => TurnAdvisor | { off: string };
 
-export function encounterRoutes(store: EncounterStore, wiki: WikiEncounters, links: () => JoinLinks, doFetch: typeof fetch = fetch, bot?: BotControl, advisor?: AdvisorSource): Hono {
+export interface EncounterRouteDeps {
+  wiki: WikiEncounters;
+  dungeons: WikiDungeons;
+  links: () => JoinLinks;
+  /** For tests: the HTTP client for the join link check. */
+  doFetch?: typeof fetch;
+  bot?: BotControl;
+  advisor?: AdvisorSource;
+}
+
+export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps): Hono {
+  const { wiki, dungeons, links, doFetch = fetch, bot, advisor } = deps;
   const r = new Hono();
   const failed = (c: Context, err: unknown) => {
     if (err instanceof WikiEncountersError) return c.json({ error: err.message }, err.status as 404 | 409 | 502);
@@ -56,15 +71,34 @@ export function encounterRoutes(store: EncounterStore, wiki: WikiEncounters, lin
     }
   });
 
+  r.get('/encounters/dungeons', async (c) => {
+    try {
+      return c.json(await dungeons.list(c.req.query('campaign') || undefined));
+    } catch (err) {
+      return failed(c, err);
+    }
+  });
+  r.get('/encounters/dungeons/:id', async (c) => {
+    try {
+      return c.json(await dungeons.get(c.req.param('id'), c.req.query('campaign') || undefined));
+    } catch (err) {
+      return failed(c, err);
+    }
+  });
+
   r.get('/encounter', (c) => c.json(store.current()));
   r.post('/encounter', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { wikiId?: unknown; campaign?: unknown; title?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { wikiId?: unknown; dungeonId?: unknown; campaign?: unknown; title?: unknown };
     try {
+      if (typeof body.dungeonId === 'string' && body.dungeonId) {
+        const dungeon = await dungeons.get(body.dungeonId, typeof body.campaign === 'string' && body.campaign ? body.campaign : undefined);
+        return c.json(store.start(encounterFromDungeon(dungeon, store.newId(), { now: Date.now, d20: () => 10 })), 201);
+      }
       if (typeof body.wikiId === 'string' && body.wikiId) {
         const prepared = await wiki.get(body.wikiId, typeof body.campaign === 'string' && body.campaign ? body.campaign : undefined);
         return c.json(store.start(encounterFromWiki(prepared, store.newId(), Date.now())), 201);
       }
-      if (typeof body.title !== 'string') return c.json({ error: 'Send wikiId (a prepared encounter) or title (a blank one)' }, 400);
+      if (typeof body.title !== 'string') return c.json({ error: 'Send wikiId (a prepared encounter), dungeonId (a dungeon) or title (a blank one)' }, 400);
       return c.json(store.start({ title: body.title }), 201);
     } catch (err) {
       if (err instanceof EncounterError && /still running/.test(err.message)) return c.json({ error: err.message }, 409);

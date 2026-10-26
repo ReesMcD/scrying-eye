@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { createApi, pollServiceFor, wikiEncountersFor } from './api.js';
+import { createApi, pollServiceFor, wikiDungeonsFor, wikiEncountersFor } from './api.js';
 import { publicJoinUrl } from './encounterRoutes.js';
 import type { PasswordSource } from './auth.js';
 import { networkGuard } from './network.js';
@@ -20,7 +20,7 @@ import { UPLOAD_TOKEN_ENV } from '../upload/recapUpload.js';
 import type { MusicControl } from '../music/control.js';
 import { EncounterStore } from '../encounter/store.js';
 import { startPlayerServer } from '../play/playerServer.js';
-import type { EncounterOutcome, EncounterRoll } from '../shared/types.js';
+import type { DungeonRun, EncounterOutcome, EncounterRoll } from '../shared/types.js';
 
 export interface ServerOptions {
   /** Pass a function when the password can change while the server runs. */
@@ -93,6 +93,11 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   encounters.on('ended', (outcome: EncounterOutcome) => {
     if (outcome.source) wikiEncounters.sendResult(outcome).then(log, (err: Error) => log(`Couldn't send the result to the wiki: ${err.message}`));
   });
+  // What's happened in a dungeon goes back to the wiki as it happens (ReesMcD/dnd-wiki#106).
+  const wikiDungeons = wikiDungeonsFor(opts.dataDir, configStore);
+  encounters.on('dungeon', (run: DungeonRun) => {
+    wikiDungeons.sendProgress(run).then(log, (err: Error) => log(`Couldn't send dungeon progress to the wiki: ${err.message}`));
+  });
   // The table's rolls, when the DM turned on posting them (#58).
   encounters.on('roll', (roll: EncounterRoll) => {
     if (opts.bot?.status().state !== 'ready' || !opts.bot.postEncounter) return;
@@ -114,6 +119,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       jobs,
       encounters,
       wikiEncounters,
+      wikiDungeons,
       mapArt,
       polls,
       ...(opts.bot ? { bot: opts.bot } : {}),

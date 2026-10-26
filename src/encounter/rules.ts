@@ -1,6 +1,7 @@
 import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell } from '../shared/battlemap.js';
 import { cellKey, readTemplate, roomAt, roomCells, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
+import { applyDungeonAction } from './dungeon.js';
 import type { Combatant, CombatantKind, Condition, ConditionName, EncounterAction, EncounterOutcome, EncounterState } from '../shared/types.js';
 
 /** The 2024 conditions, in the order the tracker lists them. */
@@ -334,6 +335,11 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       s.templates = [...(s.templates ?? []).filter((t) => t.by !== by), { ...template, id: `${by}-${deps.now()}`, by }];
       break;
     }
+    case 'room':
+    case 'fight':
+    case 'endFight':
+      applyDungeonAction(s, action, deps, log);
+      break;
     case 'clearTemplate': {
       const keep = (s.templates ?? []).filter((t) => (action.id ? t.id !== action.id : action.by ? t.by !== action.by : false));
       if (action.by && action.id && !(s.templates ?? []).some((t) => t.id === action.id && t.by === action.by)) throw new EncounterError('That isn’t your area');
@@ -390,7 +396,7 @@ function requireFog(s: EncounterState): NonNullable<EncounterState['fog']> {
 
 const isMapCell = (map: BattleMap) => (c: unknown): c is Cell => Array.isArray(c) && c.length === 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]) && c[0] >= 0 && c[1] >= 0 && c[0] < map.width && c[1] < map.height;
 
-function setRevealed(fog: NonNullable<EncounterState['fog']>, cells: readonly Cell[], on: boolean): void {
+export function setRevealed(fog: NonNullable<EncounterState['fog']>, cells: readonly Cell[], on: boolean): void {
   const revealed = new Set(fog.revealed);
   for (const c of cells) {
     if (on) revealed.add(cellKey(c));
@@ -399,13 +405,12 @@ function setRevealed(fog: NonNullable<EncounterState['fog']>, cells: readonly Ce
   fog.revealed = [...revealed];
 }
 
-/** Adds what the party's tokens can see to the revealed squares. */
 /**
  * Reveals what the party's tokens see. Revealing only adds, so after a move only the token that
  * moved needs looking from, and squares already revealed aren't checked again: this runs on the
  * same thread as voice recording, and a full pass on a big map takes a tenth of a second.
  */
-function revealPartySight(s: EncounterState, moved?: string): void {
+export function revealPartySight(s: EncounterState, moved?: string): void {
   const map = s.map!;
   const pcTokens = new Set(s.combatants.filter((c) => c.kind === 'pc' && c.tokenId).map((c) => c.tokenId!));
   const party = map.tokens.filter((t) => pcTokens.has(t.id) || (t.kind === 'pc' && !s.combatants.some((c) => c.tokenId === t.id)));
@@ -432,7 +437,7 @@ function asEncounterError<T>(f: () => T): T {
   }
 }
 
-function uniqueTokenId(map: BattleMap | null, base: string): string {
+export function uniqueTokenId(map: BattleMap | null, base: string): string {
   const taken = new Set(map?.tokens.map((t) => t.id));
   let id = base;
   for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
@@ -492,12 +497,21 @@ function advance(s: EncounterState, deps: RuleDeps, step: 1 | -1) {
 /** The end-of-fight summary for the session notes and the recap. */
 export function outcomeOf(s: EncounterState, endedAt: number): EncounterOutcome {
   const down = (c: Combatant) => c.hp === 0;
-  const defeated = s.combatants.filter((c) => c.kind !== 'pc' && down(c)).map((c) => c.name);
+  // A dungeon's earlier fights left the map when they ended; they count too.
+  const earlier = s.dungeon?.fights ?? [];
+  const defeated = [...earlier.flatMap((f) => f.defeated), ...s.combatants.filter((c) => c.kind !== 'pc' && down(c)).map((c) => c.name)];
   const downed = s.combatants.filter((c) => c.kind === 'pc' && (down(c) || c.conditions.some((x) => x.name === 'Unconscious'))).map((c) => c.name);
   const standing = s.combatants.filter((c) => c.kind !== 'pc' && !down(c)).map((c) => c.name);
-  const xp = s.combatants.filter((c) => c.kind !== 'pc' && down(c)).reduce((sum, c) => sum + ((c.ref && s.statBlocks[c.ref]?.xp) || 0), 0);
-  const rounds = Math.max(0, s.round);
+  const xp = earlier.reduce((sum, f) => sum + f.xp, 0) + s.combatants.filter((c) => c.kind !== 'pc' && down(c)).reduce((sum, c) => sum + ((c.ref && s.statBlocks[c.ref]?.xp) || 0), 0);
+  const rounds = earlier.reduce((sum, f) => sum + f.rounds, 0) + Math.max(0, s.round);
   const parts = [`${s.title}: ${rounds} round${rounds === 1 ? '' : 's'}.`];
+  if (s.dungeon) {
+    const rooms = s.dungeon.rooms;
+    const count = (flag: 'entered' | 'cleared') => rooms.filter((r) => r.state[flag]).length;
+    parts[0] = `${s.title}: ${count('entered')} of ${rooms.length} rooms explored, ${count('cleared')} cleared; ${earlier.length + (s.dungeon.fight ? 1 : 0)} fight${earlier.length + (s.dungeon.fight ? 1 : 0) === 1 ? '' : 's'} (${rounds} rounds).`;
+    const solved = rooms.filter((r) => r.state.solved).map((r) => r.puzzle?.name ?? r.name);
+    if (solved.length) parts.push(`Solved: ${solved.join(', ')}.`);
+  }
   if (defeated.length) parts.push(`Defeated: ${defeated.join(', ')}${xp ? ` (${xp.toLocaleString('en-US')} XP)` : ''}.`);
   if (standing.length) parts.push(`Still standing: ${standing.join(', ')}.`);
   if (downed.length) parts.push(`Dropped to 0 HP: ${downed.join(', ')}.`);
