@@ -9,6 +9,7 @@ import { configSchema } from '../src/config/schema.js';
 import { WikiDungeons } from '../src/encounter/dungeonWiki.js';
 import { dungeonProgress, encounterFromDungeon } from '../src/encounter/dungeon.js';
 import { applyAction, type RuleDeps } from '../src/encounter/rules.js';
+import { playerView } from '../src/play/view.js';
 import { createApi } from '../src/app/api.js';
 import { ConfigStore } from '../src/app/configStore.js';
 import { JobRunner } from '../src/app/jobs.js';
@@ -87,6 +88,8 @@ test('the live wiki’s dungeon runs: the party’s speed, nameless puzzles, a d
   const stairs = s.map!.terrain.find((t) => t.asset === 'stairs')!;
   assert.deepEqual([stairs.to, stairs.rises], [{ level: 0 }, 'up']);
   assert.equal(s.dungeon!.rooms[1]!.puzzle!.name, null);
+  const phone = playerView(s, 'aria').map!;
+  assert.deepEqual([phone.lighting, phone.level], ['dark', 1], 'phones and the screen view are as dark as the DM’s map');
   assert.deepEqual(s.map!.tokens[0]!.at, [1, 1], 'at the way in');
 });
 
