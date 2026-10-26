@@ -193,7 +193,7 @@ test('the wiki client: list, one dungeon (kept for when the wiki is down), progr
   const s = run(encounterFromDungeon(DUNGEON, 'd1', deps()), [{ type: 'room', key: '2', entered: true, looted: true }]);
   const live = fakeWiki();
   assert.equal(await new WikiDungeons(dataDir, () => CONFIG, () => TOKEN, live.doFetch).sendProgress(s.dungeon!, Date.UTC(2026, 9, 26, 21)), 'Dungeon progress sent to the wiki');
-  assert.deepEqual(live.seen[0], { path: '/api/dungeons/barrow/progress?campaign=Into+the+Valley', method: 'POST', body: { at: '2026-10-26T21:00:00.000Z', rooms: [{ key: '2', entered: true, looted: true }], fights: [] } });
+  assert.deepEqual(live.seen[0], { path: '/api/dungeons/barrow/progress?campaign=Into+the+Valley', method: 'POST', body: { at: '2026-10-26T21:00:00.000Z', rooms: [{ key: '2', entered: true, looted: true }], fights: [], secret_doors_found: [] } });
 
   const old = new WikiDungeons(dataDir, () => CONFIG, () => TOKEN, fakeWiki({ hasDungeons: false }).doFetch);
   await assert.rejects(old.list(), /doesn’t serve dungeons yet: update it \(ReesMcD\/dnd-wiki#106\)/);

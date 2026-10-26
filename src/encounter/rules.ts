@@ -1,4 +1,4 @@
-import { blankMap, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken } from '../shared/battlemap.js';
+import { blankMap, cellsOf, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken } from '../shared/battlemap.js';
 import { pathFeet } from '../shared/tableAids.js';
 import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
@@ -303,10 +303,15 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       s.map = asEncounterError(() => blankMap(action.width, action.height));
       break;
     }
-    case 'secretDoor':
+    case 'secretDoor': {
+      const door = s.map?.terrain[action.index];
       s.map = onMap(s, (m) => findSecretDoor(m, action.index));
       log('A secret door is found');
+      const at = door && s.map ? cellsOf(door, s.map.width, s.map.height)[0] : undefined;
+      // For the wiki (#106): which secret doors this party found.
+      if (s.dungeon && at) (s.dungeon.secretDoorsFound ??= []).push((s.map!.level ?? 1) > 1 ? [at[0], at[1], s.map!.level!] : [at[0], at[1]]);
       break;
+    }
     case 'fog': {
       if (!s.map) throw new EncounterError('This encounter has no map');
       if (!action.on) delete s.fog;

@@ -128,7 +128,7 @@ export class EncounterStore extends EventEmitter {
     const rolled = action.type === 'roll' ? next.rolls?.at(-1) : undefined;
     if (rolled && !rolled.secret && next.postRolls) this.emit('roll', rolled);
     // Looking at a room or giving a hint isn't progress; entering, clearing, looting, solving and fights are.
-    const progressed = action.type === 'fight' || action.type === 'endFight' || (action.type === 'room' && [action.entered, action.cleared, action.looted, action.solved].some((v) => v !== undefined));
+    const progressed = action.type === 'fight' || action.type === 'endFight' || action.type === 'secretDoor' || (action.type === 'room' && [action.entered, action.cleared, action.looted, action.solved].some((v) => v !== undefined));
     if (next.dungeon && progressed) this.emit('dungeon', next.dungeon);
     return next;
   }

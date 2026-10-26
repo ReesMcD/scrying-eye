@@ -52,6 +52,7 @@ export class MapEngine3d {
   private readonly camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   private readonly controls: OrbitControls;
   private readonly sun = new THREE.DirectionalLight(0xffffff, 1.7);
+  private readonly sky = new THREE.HemisphereLight(0xdfe8ff, 0x3a3328, 1.1);
   private readonly world = new THREE.Group();
   private readonly figures = new Map<string, FigureMeshes>();
   private readonly floorCanvas = document.createElement('canvas');
@@ -95,7 +96,7 @@ export class MapEngine3d {
     this.floorTexture.colorSpace = THREE.SRGBColorSpace;
     this.floorTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
 
-    this.scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3328, 1.1));
+    this.scene.add(this.sky);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
     this.sun.shadow.bias = -0.0005;
@@ -267,7 +268,84 @@ export class MapEngine3d {
 
     this.addProps(m);
     this.addWater(m);
+    this.addPits(m);
+    this.addLights(m);
     this.placeSun(m);
+  }
+
+  /** How bright it is where no torch reaches (#105): daylight, dusk, or a dark dungeon. */
+  private setLighting(lighting: MapScene['lighting']): void {
+    const [sky, sun] = lighting === 'dark' ? [0.45, 0.25] : lighting === 'dim' ? [0.6, 0.7] : [1.1, 1.7];
+    this.sky.intensity = sky;
+    this.sun.intensity = sun;
+  }
+
+  /** Pits and sunken floors: a dark hole with a lip, deeper ones darker. */
+  private addPits(m: MapScene): void {
+    if (!m.pits.length) return;
+    const matrix = new THREE.Matrix4();
+    const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }), m.pits.length);
+    m.pits.forEach((p, i) => {
+      mesh.setMatrixAt(i, matrix.compose(new THREE.Vector3(p.x + 0.5, 0.012, p.z + 0.5), new THREE.Quaternion(), new THREE.Vector3(0.94, 1, 0.94)));
+      mesh.setColorAt(i, new THREE.Color(0x15110d).multiplyScalar(Math.max(0.15, 1 - p.depth / 6)));
+    });
+    this.world.add(mesh);
+  }
+
+  /** Torches, braziers and campfires: the fixture, a flame, a glow, and light on what's near. */
+  private addLights(m: MapScene): void {
+    this.setLighting(m.lighting);
+    if (!m.lights.length) return;
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2b2724, roughness: 0.7, metalness: 0.4 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 1 });
+    const glow = glowTexture();
+    // Each light costs every lit surface some work: the nearest few to the middle are real lights.
+    const real = new Set(
+      [...m.lights]
+        .sort((a, b) => (a.kind === 'torch' ? 1 : 0) - (b.kind === 'torch' ? 1 : 0) || b.dim - a.dim)
+        .slice(0, MAX_LIGHTS),
+    );
+    for (const l of m.lights) {
+      const colour = new THREE.Color(l.color);
+      const group = new THREE.Group();
+      group.position.set(l.x, l.y, l.z);
+      if (l.kind === 'torch') {
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.36, 6), wood);
+        handle.position.y = -0.2;
+        handle.rotation.x = 0.35;
+        if (l.facing !== undefined) group.rotation.y = l.facing;
+        group.add(handle);
+      } else if (l.kind === 'brazier') {
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.18, 0.18, 12), iron);
+        bowl.position.y = -0.08;
+        const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.14, l.y - 0.1, 8), iron);
+        stand.position.y = -0.1 - (l.y - 0.1) / 2;
+        group.add(bowl, stand);
+      } else if (l.kind === 'campfire') {
+        for (const turn of [0.4, -0.4, 1.4]) {
+          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6), wood);
+          log.rotation.set(Math.PI / 2, turn, 0);
+          log.position.y = -0.18;
+          group.add(log);
+        }
+      }
+      if (l.kind !== 'glow') {
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(l.kind === 'torch' ? 0.07 : 0.16, l.kind === 'torch' ? 0.2 : 0.34, 8), new THREE.MeshBasicMaterial({ color: colour.clone().lerp(new THREE.Color(0xfff2b0), 0.35) }));
+        flame.position.y = l.kind === 'torch' ? 0.02 : 0.08;
+        group.add(flame);
+      }
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: colour, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+      const size = l.kind === 'torch' ? 0.9 : l.kind === 'glow' ? Math.max(1, l.bright) : 1.4;
+      halo.scale.set(size, size, 1);
+      halo.position.y = 0.06;
+      group.add(halo);
+      if (real.has(l)) {
+        const light = new THREE.PointLight(colour, m.lighting === 'bright' ? 2 : 5, l.dim * 1.15, 1.2);
+        light.position.y = 0.15;
+        group.add(light);
+      }
+      this.world.add(group);
+    }
   }
 
   /** Squares of the floor picture lifted to the top of raised ground. */
@@ -704,6 +782,26 @@ export class MapEngine3d {
 }
 
 /** Frees the GPU memory of everything under an object, except a texture that's kept (the floor). */
+/** The most lights drawn as real lights; the rest only glow. */
+const MAX_LIGHTS = 12;
+
+/** A soft round glow, shared by every light's halo. */
+let glowCache: THREE.Texture | null = null;
+function glowTexture(): THREE.Texture {
+  if (glowCache) return glowCache;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.35)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  glowCache = new THREE.CanvasTexture(canvas);
+  return glowCache;
+}
+
 function disposeTree(root: THREE.Object3D, keep?: THREE.Texture): void {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh | THREE.Sprite;

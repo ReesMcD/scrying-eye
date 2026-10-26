@@ -69,7 +69,7 @@ function DungeonCard({ summary, open, onToggle, onRun, busy }: { summary: WikiDu
                     {r.role && ROLE[r.role] && <span className="muted"> · {ROLE[r.role]}</span>}
                     {r.encounter && <span> · ⚔ {r.encounter.creatures.length ? r.encounter.creatures.map((c) => `${c.count} × ${c.name}`).join(', ') : r.encounter.text}</span>}
                     {r.trap && <span> · trap</span>}
-                    {r.puzzle && <span> · puzzle: {r.puzzle.name}</span>}
+                    {r.puzzle && <span> · puzzle{r.puzzle.name ? `: ${r.puzzle.name}` : ''}</span>}
                     {r.treasure && <span> · treasure</span>}
                   </li>
                 ))}

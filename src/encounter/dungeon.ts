@@ -162,6 +162,8 @@ export function dungeonProgress(run: DungeonRun, at: number) {
   return {
     at: new Date(at).toISOString(),
     rooms: run.rooms.filter((r) => Object.values(r.state).some(Boolean)).map((r) => ({ key: r.key, ...r.state })),
-    fights: run.fights.map((f) => ({ room: f.room, rounds: f.rounds, defeated: f.defeated, xp: f.xp })),
+    // The wiki files a fight under its room; one that started nowhere in particular isn't sent.
+    fights: run.fights.flatMap((f) => (f.room ? [{ room: f.room, rounds: f.rounds, defeated: f.defeated, xp: f.xp }] : [])),
+    secret_doors_found: run.secretDoorsFound ?? [],
   };
 }

@@ -28,6 +28,18 @@ export interface Terrain {
   blocks_sight?: boolean;
   /** On a wall: a secret door. A wall in every way until found; never sent to players. */
   secret?: 'door';
+  /** A light on it (torch, brazier, campfire), in feet. Never changes the rules. */
+  light?: Light;
+  /** Stairs between a dungeon's levels: where they come out (`level` 0 is outside, the way in). */
+  to?: { level: number; at?: Cell };
+  rises?: 'up' | 'down';
+}
+
+export interface Light {
+  bright: number;
+  dim: number;
+  /** Hex, e.g. "#ffb060". */
+  color?: string;
 }
 
 /** A keyed area (a dungeon's room): DM information, left out of players' copies. */
@@ -72,6 +84,10 @@ export interface BattleMap {
   tokens: MapToken[];
   notes: Array<{ at: Cell; text: string }>;
   rooms?: Room[];
+  /** Wherever no light reaches; default bright. The wiki's dungeon plans are dark. */
+  lighting?: 'bright' | 'dim' | 'dark';
+  /** Which floor of a dungeon this plan is (1 is the first). */
+  level?: number;
 }
 
 export const SIZE_SQUARES: Record<TokenSize, number> = { tiny: 1, small: 1, medium: 1, large: 2, huge: 3, gargantuan: 4 };
@@ -114,6 +130,8 @@ export function readMap(raw: unknown): BattleMap | null {
     tokens,
     notes,
     ...(rooms.length ? { rooms } : {}),
+    ...(r.lighting === 'bright' || r.lighting === 'dim' || r.lighting === 'dark' ? { lighting: r.lighting } : {}),
+    ...(isInt(r.level) && r.level >= 1 ? { level: r.level } : {}),
   };
 }
 
