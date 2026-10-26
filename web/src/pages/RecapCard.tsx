@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { api, downloadFile } from '../api';
 import { copyText } from '../clipboard';
 import { when } from '../format';
@@ -9,8 +9,8 @@ import { Badge } from '../ui';
 
 const DEFAULT_SECTIONS = ['NPCs', 'Locations', 'What happened', 'Combat'];
 
-/** The recap: read, copy, add a note to a section, or edit the Markdown. */
-export function RecapCard({
+/** The recap: read, copy, add a note to a section, or edit the Markdown. Memoised, like the transcript (#42). */
+export const RecapCard = memo(function RecapCard({
   s,
   onSaved,
   busy,
@@ -173,7 +173,7 @@ export function RecapCard({
       )}
     </div>
   );
-}
+});
 
 /** "Uploaded 5 min ago · Open page", flagged when the recap changed since. */
 function UploadLine({ upload }: { upload: NonNullable<SessionDetail['upload']> }) {

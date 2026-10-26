@@ -23,6 +23,7 @@ export type {
   GuildInfo,
   Job,
   JobStep,
+  JobUpdate,
   LiveTranscript,
   LiveUpdate,
   MusicLibraryState,

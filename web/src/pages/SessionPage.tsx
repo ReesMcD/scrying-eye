@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, downloadFile, subscribeJobs } from '../api';
 import { hms, speakerHue, when } from '../format';
 import { href } from '../router';
 import type { Job, JobStep, SessionDetail, TranscriptLine } from '../types';
 import { Badge, Empty, Toggle } from '../ui';
+import { applyJobUpdate, withJob } from '../jobs';
 import { RecapCard } from './RecapCard';
 import { UnpairedCard } from './UnpairedCard';
 import { SessionHeader } from './SessionHeader';
@@ -39,13 +40,22 @@ export function SessionPage({ id }: { id: string }) {
   // Live job progress; reload the session when one of its jobs finishes.
   useEffect(
     () =>
-      subscribeJobs((job) => {
-        if (job.sessionId !== id) return;
-        setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)].sort((a, b) => b.createdAt - a.createdAt));
-        if (job.status === 'done' || job.status === 'failed') load();
+      subscribeJobs((update) => {
+        if (update.sessionId !== id) return;
+        setJobs((prev) => {
+          const job = applyJobUpdate(prev.find((j) => j.id === update.id), update);
+          // Missed some lines (a dropped connection): fetch the whole job.
+          if (!job) void api<Job>(`/jobs/${update.id}`).then((full) => setJobs((p) => withJob(p, full)), () => {});
+          return job ? withJob(prev, job) : prev;
+        });
+        if (update.status === 'done' || update.status === 'failed') load();
       }, load),
     [id, load],
   );
+
+  const upload = useCallback(() => void run('upload'), [id, force]);
+  const saved = useCallback((d: SessionDetail) => (setS(d), setJobs(d.jobs)), []);
+  const recap = useMemo(() => (s?.summary ? { ...s, summary: s.summary } : null), [s]);
 
   const run = async (step: JobStep) => {
     if (step === 'summarize' && s?.recapState === 'edited' && !confirm('Write a new recap? Your edited version is kept in the session folder (summary/edited-…md), but the new recap replaces it here.')) return;
@@ -118,7 +128,7 @@ export function SessionPage({ id }: { id: string }) {
         )}
       </div>
 
-      <UnpairedCard s={s} onSaved={(d) => (setS(d), setJobs(d.jobs))} />
+      <UnpairedCard s={s} onSaved={saved} />
 
       <div className="tabs" role="tablist">
         {(['summary', 'speakers', 'transcript'] as Tab[])
@@ -131,17 +141,17 @@ export function SessionPage({ id }: { id: string }) {
       </div>
 
       {current === 'summary' &&
-        (s.summary ? (
-          <RecapCard s={{ ...s, summary: s.summary }} busy={active?.step === 'summarize'} uploading={active?.step === 'upload'} onUpload={() => void run('upload')} onSaved={(d) => (setS(d), setJobs(d.jobs))} />
+        (recap ? (
+          <RecapCard s={recap} busy={active?.step === 'summarize'} uploading={active?.step === 'upload'} onUpload={upload} onSaved={saved} />
         ) : (
           <Empty title="No recap yet">{s.has.transcript ? 'Press Write recap above.' : 'Transcribe the session first.'}</Empty>
         ))}
 
-      {current === 'speakers' && s.speakerLines && <Transcript lines={s.speakerLines} onDownload={() => downloadFile(s.id, 'transcript.speakers.md')} />}
+      {current === 'speakers' && s.speakerLines && <Transcript lines={s.speakerLines} sessionId={s.id} file="transcript.speakers.md" />}
 
       {current === 'transcript' &&
         (s.lines.length ? (
-          <Transcript lines={s.lines} onDownload={() => downloadFile(s.id, 'transcript.md')} />
+          <Transcript lines={s.lines} sessionId={s.id} file="transcript.md" />
         ) : (
           <Empty title="No transcript yet">{s.has.audio ? `${s.utterances} audio clips recorded. Press Transcribe above.` : s.audioDeletedAt ? `The audio was deleted on ${when(s.audioDeletedAt)}.` : 'This session has no audio.'}</Empty>
         ))}
@@ -149,7 +159,9 @@ export function SessionPage({ id }: { id: string }) {
   );
 }
 
-function Transcript({ lines, onDownload }: { lines: TranscriptLine[]; onDownload: () => void }) {
+/** Memoised: job progress re-renders the page many times a minute; a long transcript shouldn't (#42). */
+const Transcript = memo(function Transcript({ lines, sessionId, file }: { lines: TranscriptLine[]; sessionId: string; file: 'transcript.md' | 'transcript.speakers.md' }) {
+  const onDownload = () => void downloadFile(sessionId, file);
   const [query, setQuery] = useState('');
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const speakers = useMemo(() => [...new Set(lines.map((l) => l.speaker))], [lines]);
@@ -203,4 +215,4 @@ function Transcript({ lines, onDownload }: { lines: TranscriptLine[]; onDownload
       </div>
     </div>
   );
-}
+});
