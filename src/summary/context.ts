@@ -1,6 +1,6 @@
 import type { Config } from '../config/schema.js';
 import type { SessionInfo } from '../session/layout.js';
-import type { TranscriptLine, UnpairedSpeaker } from '../shared/types.js';
+import type { EncounterOutcome, TranscriptLine, UnpairedSpeaker } from '../shared/types.js';
 import { campaignFor, othersBlock, partyBlock } from '../config/roster.js';
 
 /** How the prompts should treat people who aren't on the roster yet, from the clean-up's guesses. */
@@ -18,13 +18,15 @@ function unpairedLines(unpaired: readonly UnpairedSpeaker[]): string {
 
 /**
  * The "About this call" block every prompt starts with: date, channel, speakers, the campaign's
- * playable characters (plus anyone not on the roster yet), and the user's context.
+ * playable characters (plus anyone not on the roster yet), fights run in the tracker meanwhile,
+ * and the user's context.
  */
 export function contextBlock(
   session: SessionInfo,
   lines: readonly TranscriptLine[],
   config: Pick<Config, 'summary' | 'transcript' | 'campaigns' | 'speakers' | 'characters'>,
   unpaired: readonly UnpairedSpeaker[] = [],
+  fights: readonly EncounterOutcome[] = [],
 ): string {
   const speakers = [...new Set(lines.map((l) => l.speaker))].join(', ');
   const timeZone = config.transcript.timezone;
@@ -42,6 +44,9 @@ export function contextBlock(
     ...(party ? ['', '## Party', '', 'The playable characters, and who plays them. They are not NPCs.', '', party] : []),
     ...(others ? ['', '## Also at the table', '', 'Speakers who play no character here (the DM, guests).', '', others] : []),
     ...(unpaired.length ? ['', '## Not on the roster yet', '', unpairedLines(unpaired)] : []),
+    ...(fights.length
+      ? ['', '## Fights run in the encounter tracker', '', 'What the DM\'s tracker recorded during this call: trust its names, rounds and who fell for the Combat section.', '', ...fights.map((f) => `- ${f.text}`)]
+      : []),
     ...(config.summary.context ? ['', config.summary.context.trim()] : []),
     ...(campaign?.context ? ['', campaign.context.trim()] : []),
   ].join('\n');

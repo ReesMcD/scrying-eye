@@ -47,7 +47,7 @@ export function recoverInterrupted(dataDir: string): string[] {
   const recovered: string[] = [];
   for (const id of readdirSync(root)) {
     const dir = join(root, id);
-    const info = skipDamaged(id, () => readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir)));
+    const info = skipDamaged(`session ${id}`, () => readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir)));
     if (!info || info.source !== 'bot' || info.stoppedAt) continue;
     const last = listUtterances(dir).reduce((m, u) => Math.max(m, statSync(u.path).mtimeMs), info.startedAt);
     writeJson(paths.session(dir), { ...info, stoppedAt: Math.round(last), interrupted: true });

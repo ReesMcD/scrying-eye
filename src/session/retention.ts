@@ -14,7 +14,7 @@ export function pruneOldAudio(dataDir: string, days: number, now = Date.now()): 
   const pruned: string[] = [];
   for (const id of readdirSync(root)) {
     const dir = join(root, id);
-    const info = skipDamaged(id, () => readJson<SessionInfo>(paths.session(dir)));
+    const info = skipDamaged(`session ${id}`, () => readJson<SessionInfo>(paths.session(dir)));
     const hasAudio = existsSync(paths.audioDir(dir)) || existsSync(paths.batchesDir(dir));
     if (!info?.stoppedAt || !hasAudio || !existsSync(paths.segments(dir))) continue;
     if (now - info.stoppedAt < days * DAY_MS) continue;

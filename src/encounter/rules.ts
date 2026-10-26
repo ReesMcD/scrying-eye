@@ -488,10 +488,11 @@ export function outcomeOf(s: EncounterState, endedAt: number): EncounterOutcome 
   const defeated = s.combatants.filter((c) => c.kind !== 'pc' && down(c)).map((c) => c.name);
   const downed = s.combatants.filter((c) => c.kind === 'pc' && (down(c) || c.conditions.some((x) => x.name === 'Unconscious'))).map((c) => c.name);
   const standing = s.combatants.filter((c) => c.kind !== 'pc' && !down(c)).map((c) => c.name);
+  const xp = s.combatants.filter((c) => c.kind !== 'pc' && down(c)).reduce((sum, c) => sum + ((c.ref && s.statBlocks[c.ref]?.xp) || 0), 0);
   const rounds = Math.max(0, s.round);
   const parts = [`${s.title}: ${rounds} round${rounds === 1 ? '' : 's'}.`];
-  if (defeated.length) parts.push(`Defeated: ${defeated.join(', ')}.`);
+  if (defeated.length) parts.push(`Defeated: ${defeated.join(', ')}${xp ? ` (${xp.toLocaleString('en-US')} XP)` : ''}.`);
   if (standing.length) parts.push(`Still standing: ${standing.join(', ')}.`);
   if (downed.length) parts.push(`Dropped to 0 HP: ${downed.join(', ')}.`);
-  return { id: s.id, title: s.title, rounds, startedAt: s.startedAt, endedAt, defeated, downed, standing, text: parts.join(' ') };
+  return { id: s.id, title: s.title, rounds, startedAt: s.startedAt, endedAt, defeated, downed, standing, xp, ...(s.source ? { source: s.source } : {}), text: parts.join(' ') };
 }

@@ -452,6 +452,21 @@ What's in it:
     and refuses walls, closed doors, deep water and occupied squares. **Doors** opens, closes and
     locks them; **Difficult** marks or clears squares; combatants without a token are placed with a
     tap. A blank encounter can get a blank grid. Pinch or scroll to zoom, drag the map to pan.
+  - **Exploring:** the DM sees each room's key and name. Secret doors are walls (dashed for the DM)
+    until the party finds one; tap it under **Doors** to make it a door. **Fog** hides the map from
+    players until it's revealed, by square or by room, or automatically as the party's tokens see
+    more (walls and closed doors block sight). Players' phones get only what's revealed.
+  - **Spell areas and measuring:** drag a sphere, cone, line or cube out from a grid corner; a
+    square counts when at least half of it is covered (2024 rules). Everyone sees areas; each
+    person has one at a time. **Measure** shows the distance between two corners to you alone.
+  - **Dice:** quick buttons (d20, advantage, disadvantage, d4–d12) or any notation (`1d20+5`,
+    `2d6+3`, `4d6kh3`). The app rolls, so no phone decides a result, and everyone sees the table's
+    latest rolls. The DM can roll in secret; a hidden monster's rolls are always secret. Turn on
+    **Post to Discord** to send the table's rolls to the channel too.
+  - **Monster turns (optional):** turn on **Settings → Encounters → Suggest monsters' moves**, and
+    on a monster's turn **Suggest a move** asks Claude what it would do, from its stat block, the
+    wiki's tactics and where everyone stands. You decide; nothing happens by itself. It uses the
+    recap's model and Anthropic key.
   - **Map art:** point **Settings → Battle maps** at a folder of map art on this Mac, like the
     [Forgotten Adventures](https://www.forgotten-adventures.net/) packs. Pictures are matched by
     file name (`Tree_Oak_A1_2x2.png` is a 2×2 oak; textures for grass, road, water): first a file
@@ -459,6 +474,9 @@ What's in it:
     is drawn plainly, and the rules always come from the map, never the pictures. The files stay
     in that folder: players' phones get only the pictures on the map in play, and they're never
     copied, uploaded or bundled into the app (FA's free packs are for personal use).
+  - **When it ends:** you get a summary (rounds, who fell, XP from the stat blocks). A fight from
+    the wiki is reported back to it (once the wiki accepts results; until then it's just noted in
+    the log), and fights run during a recorded session go into that session's recap.
   - It survives an app restart, and every open view updates live.
 - **Players' link**: players follow the fight on their phone or in a browser, with nothing to
   install.
@@ -466,9 +484,10 @@ What's in it:
     once and the device remembers it.
   - They see whose turn it is ("Your turn" buzzes the phone), the party's HP and conditions, and
     whether monsters look healthy, bloodied or down.
-  - They change only their own character's HP, conditions and initiative, and move only their own
-    token on the map (hidden monsters and the DM's map notes never reach their phones).
-  - To reach their phones it needs a public address: see **Settings → Players** (Tailscale Funnel).
+  - They change only their own character's HP, conditions and initiative, move only their own
+    token on the map, roll dice for the table and place their own spell area (hidden monsters, the
+    DM's map notes and anything under the fog never reach their phones).
+  - To reach their phones it needs a public address: see **Settings → Encounters** (Tailscale Funnel).
   - **Posting the link:**
     - **From Discord:** `/encounter start` (pick one prepared in the wiki as you type, or type a
       name for a blank one) posts the link with a **Join** button in that channel. `/encounter link`

@@ -74,15 +74,16 @@ export function readJson<T>(path: string): T | undefined {
 }
 
 /**
- * For code that goes through every session (the list, startup recovery, retention): one damaged
- * session is reported and skipped instead of failing all of them. Other errors still throw.
+ * For code that goes through every session or saved encounter (the list, startup recovery,
+ * retention, past fights): one damaged file is reported and skipped instead of failing all of
+ * them. Other errors still throw.
  */
-export function skipDamaged<T>(id: string, read: () => T): T | undefined {
+export function skipDamaged<T>(what: string, read: () => T): T | undefined {
   try {
     return read();
   } catch (err) {
     if (!(err instanceof DamagedFileError)) throw err;
-    console.warn(`Skipping session ${id}: ${err.message}`);
+    console.warn(`Skipping ${what}: ${err.message}`);
     return undefined;
   }
 }

@@ -64,7 +64,7 @@ export function joinPost(state: EncounterState, url: string, place?: string | nu
 }
 
 const NO_PUBLIC =
-  'Players can’t reach it yet: turn on Tailscale Funnel and add its address in the app (Settings → Players). The DM tracker works meanwhile.';
+  'Players can’t reach it yet: turn on Tailscale Funnel and add its address in the app (Settings → Encounters). The DM tracker works meanwhile.';
 
 export async function runEncounterCommand(sub: 'start' | 'link' | 'end', name: string | undefined, deps: EncounterCommandDeps): Promise<EncounterReply> {
   const current = deps.store.current();

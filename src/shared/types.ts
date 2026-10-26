@@ -527,6 +527,15 @@ export interface EncounterRoll {
   secret?: boolean;
 }
 
+/** Claude's idea for a monster's turn (POST /api/encounter/suggest). */
+export interface TurnSuggestion {
+  suggestion: string;
+  /** The stat block action it uses, or '' for none. */
+  action: string;
+  /** Who it targets, or '' for no one. */
+  target: string;
+}
+
 /** A device that joined through the link. Only a hash of its token is kept. */
 export interface JoinedPlayer {
   tokenHash: string;
@@ -548,6 +557,10 @@ export interface EncounterOutcome {
   downed: string[];
   /** Monsters and NPCs still standing. */
   standing: string[];
+  /** XP for the defeated, from their stat blocks (0 when none say). */
+  xp: number;
+  /** The wiki encounter it was run from, so the result can go back. */
+  source?: { wikiId: string; campaign: string };
   text: string;
 }
 

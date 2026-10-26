@@ -1,5 +1,5 @@
 import { writeFileAtomic } from '../util/files.js';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Config } from '../config/schema.js';
 import { paths, readJson, writeJson, type SessionInfo } from '../session/layout.js';
 import { formatOffset, renderMarkdown, type TranscriptLine } from '../transcript/merge.js';
@@ -9,6 +9,7 @@ import { runChunkPass } from './chunkPass.js';
 import { cleanTranscript, type CleanupResult } from './cleanup.js';
 import type { CleanupAuditReport } from './cleanupAudit.js';
 import { contextBlock } from './context.js';
+import { fightsDuring } from '../encounter/history.js';
 import { disambiguateSession } from './disambiguate.js';
 import type { Extraction, SummaryModel, Usage } from './model.js';
 import { loadTemplate, render } from './prompts.js';
@@ -123,7 +124,9 @@ export async function summarizeSession(sessionDir: string, config: Config, confi
   writeJson(summaryPaths.unpaired(sessionDir), unpaired);
 
   // 3. Extract notes per chunk.
-  const about = contextBlock(session, lines, config, unpaired);
+  // Sessions live in <data>/sessions/<id>; the encounter tracker's history is beside them.
+  const fights = fightsDuring(resolve(sessionDir, '..', '..'), session.startedAt, session.stoppedAt ?? lines.at(-1)!.endMs);
+  const about = contextBlock(session, lines, config, unpaired, fights);
   const exclude = bullets(s.exclude, '- (no extra exclusions)');
   const extractT = loadTemplate('extract', s.prompts_dir);
   const synthT = loadTemplate('synthesize', s.prompts_dir);

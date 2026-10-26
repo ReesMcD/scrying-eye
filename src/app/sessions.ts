@@ -105,7 +105,7 @@ export function listSessions(dataDir: string, config: Config | null = null): Ses
   const root = sessionsRoot(dataDir);
   if (!existsSync(root)) return [];
   return readdirSync(root)
-    .map((id) => skipDamaged(id, () => describeSession(dataDir, id, config)))
+    .map((id) => skipDamaged(`session ${id}`, () => describeSession(dataDir, id, config)))
     .filter((s): s is SessionSummary => !!s)
     .sort((a, b) => b.startedAt - a.startedAt);
 }

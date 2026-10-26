@@ -24,7 +24,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'recording', label: 'Recording' },
   { key: 'summary', label: 'Recap' },
   { key: 'upload', label: 'Upload' },
-  { key: 'players', label: 'Players' },
+  { key: 'players', label: 'Encounters' },
   { key: 'maps', label: 'Battle maps' },
   { key: 'transcription', label: 'Transcription' },
   { key: 'prompts', label: 'Prompts' },
