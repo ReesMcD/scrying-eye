@@ -56,7 +56,7 @@ export class MapEngine3d {
   private readonly world = new THREE.Group();
   private readonly figures = new Map<string, FigureMeshes>();
   private readonly floorCanvas = document.createElement('canvas');
-  private readonly floorTexture: THREE.CanvasTexture;
+  private floorTexture: THREE.CanvasTexture;
   private readonly observer: ResizeObserver;
   private model: MapScene | null = null;
   private builtKey = '';
@@ -92,9 +92,7 @@ export class MapEngine3d {
     this.guide.hidden = true;
     el.append(this.guide);
 
-    this.floorTexture = new THREE.CanvasTexture(this.floorCanvas);
-    this.floorTexture.colorSpace = THREE.SRGBColorSpace;
-    this.floorTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.floorTexture = this.newFloorTexture();
 
     this.scene.add(this.sky);
     this.sun.castShadow = true;
@@ -485,8 +483,12 @@ export class MapEngine3d {
     // Up to 48 px a square, within a texture a phone can hold (an 80-square map at 4096 px is 64 MB).
     const most = Math.min(this.renderer.capabilities.maxTextureSize, this.coarse ? 2048 : 3072);
     const s = Math.max(8, Math.min(48, Math.floor(most / Math.max(map.width, map.height))));
+    const resized = this.floorCanvas.width !== map.width * s || this.floorCanvas.height !== map.height * s;
     this.floorCanvas.width = map.width * s;
     this.floorCanvas.height = map.height * s;
+    // A texture keeps the size it was first sent to the GPU at: a map of another size (another
+    // level, a room's own battle map) needs a new one, or the old floor shows through.
+    if (resized) this.replaceFloorTexture();
     const ctx = this.floorCanvas.getContext('2d');
     if (!ctx) return;
     paintTerrain(ctx, map, s, this.colors, art, BUILT);
@@ -508,6 +510,26 @@ export class MapEngine3d {
     if (fog) paintFog(ctx, map, s, fog, this.colors);
     paintOverlays(ctx, overlays ?? [], s, this.colors);
     this.floorTexture.needsUpdate = true;
+  }
+
+  private newFloorTexture(): THREE.CanvasTexture {
+    const texture = new THREE.CanvasTexture(this.floorCanvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    return texture;
+  }
+
+  private replaceFloorTexture(): void {
+    const old = this.floorTexture;
+    this.floorTexture = this.newFloorTexture();
+    this.world.traverse((o) => {
+      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (material && !Array.isArray(material) && material.map === old) {
+        material.map = this.floorTexture;
+        material.needsUpdate = true;
+      }
+    });
+    old.dispose();
   }
 
   // --- Figures ---------------------------------------------------------------------------------
