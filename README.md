@@ -458,6 +458,10 @@ What's in it:
       it.
     - **Fight here** puts the room's creatures in the room and goes to initiative. **End fight**
       goes back to exploring: the fallen leave the map, and an emptied room is cleared.
+    - **Prepared battles** (dnd-wiki #109): a room with a battle saved in the wiki (`wiki_battle`
+      with `dungeon` and `room`) offers **Fight on its battle map**: the room's own map, with the
+      party and its creatures where the battle puts them and no fog. **End fight** goes back to the
+      floor plan as it was, with any survivors in the room. **Fight on the floor plan** still works.
     - **Levels** (dnd-wiki #110): a dungeon with several floors has a plan for each. The rooms
       are listed by level, and **Take the stairs down to level 2** moves the party to the stairs'
       other end on that plan. Each level keeps its own fog, and whoever stayed behind stays there.

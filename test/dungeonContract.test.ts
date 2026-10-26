@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readMap } from '../src/shared/battlemap.js';
@@ -9,7 +9,11 @@ import { configSchema } from '../src/config/schema.js';
 import { WikiDungeons } from '../src/encounter/dungeonWiki.js';
 import { dungeonProgress, encounterFromDungeon } from '../src/encounter/dungeon.js';
 import { applyAction, type RuleDeps } from '../src/encounter/rules.js';
-import type { WikiDungeon } from '../src/shared/types.js';
+import { createApi } from '../src/app/api.js';
+import { ConfigStore } from '../src/app/configStore.js';
+import { JobRunner } from '../src/app/jobs.js';
+import { EncounterStore } from '../src/encounter/store.js';
+import type { EncounterState, WikiDungeon, WikiEncounter } from '../src/shared/types.js';
 
 /**
  * A dungeon exactly as the live wiki sends it (GET /api/dungeons/<id>, dnd-wiki #104–#110): nulls
@@ -185,4 +189,84 @@ test('a dungeon on two levels: start at the way in, take the stairs down and bac
   assert.deepEqual(s.map!.tokens.find((t) => t.id === 'aria')!.at, [8, 6], 'back up by the same stairs');
   assert.equal(s.fog!.revealed.length, seenUp, 'what they saw upstairs is still seen');
   assert.equal(s.dungeon!.levels!.find((x) => x.level === 2)!.map.tokens.filter((t) => t.kind === 'monster').length, monsters, 'the skeletons stay below');
+});
+
+// --- A room's prepared battle (#109) ----------------------------------------------------------
+
+/** The Millyard's battle as /api/encounters/<id> sends it: its own map, the party and two skeletons placed. */
+const MILLYARD: WikiEncounter = {
+  id: 'millyard-skeletons', title: 'Millyard Skeletons', campaign: 'Crimson Tide', place: 'The Old Mill', difficulty: 'moderate', party_level: 3, xp: 100, status: 'prepared', run: false, updated: null,
+  summary: 'Skeletons in the ash.', read_aloud: null, setup: null, tactics: 'They flank.', changes: null, treasure: null,
+  creatures: [{ name: 'Skeleton', source: 'srd', ac: 13, hp: 13, xp: 50, size: 'Medium', count: 2 }],
+  map: {
+    v: 1, width: 8, height: 6, lighting: 'dark', terrain: [{ kind: 'cover', cells: [[4, 3]], cover: 'half' }],
+    tokens: [
+      { id: 'aria', name: 'Aria', kind: 'pc', size: 'medium', at: [1, 3] },
+      { id: 'skeleton-1', name: 'Skeleton 1', kind: 'monster', size: 'medium', at: [6, 2] },
+      { id: 'skeleton-2', name: 'Skeleton 2', kind: 'monster', size: 'medium', at: [6, 4] },
+    ],
+    notes: [],
+  },
+  party: MILL.party,
+};
+const WITH_BATTLE: WikiDungeon = { ...MILL, rooms: [{ ...MILL.rooms[0]!, encounter: { ...MILL.rooms[0]!.encounter!, encounter_id: 'millyard-skeletons' } }, MILL.rooms[1]!] };
+
+test('a room’s prepared battle: fought on its own map, then back to the floor plan as it was', () => {
+  let s = encounterFromDungeon(WITH_BATTLE, 'd3', deps());
+  s = applyAction(s, { type: 'move', token: 'aria', at: [3, 3] }, deps());
+  const plan = s.map!;
+  const seen = s.fog!.revealed.length;
+  assert.throws(() => applyAction(s, { type: 'fight', room: '1', prepared: true }, deps()), /comes from the wiki/);
+
+  s = applyAction(s, { type: 'fight', room: '1', battle: MILLYARD }, deps());
+  assert.equal(s.status, 'setup');
+  assert.deepEqual([s.map!.width, s.map!.height], [8, 6], 'the room’s own map');
+  assert.deepEqual(s.map!.tokens.map((t) => [t.name, t.at]), [['Aria', [1, 3]], ['Skeleton 1', [6, 2]], ['Skeleton 2', [6, 4]]], 'everyone where the battle puts them');
+  assert.equal(s.fog, undefined, 'the whole room in view');
+  assert.equal(s.statBlocks.Skeleton!.hp, 13);
+  assert.equal(s.dungeon!.fight!.battle, 'Millyard Skeletons');
+  assert.match(s.log.at(-1)!.text, /on its prepared map \(Millyard Skeletons\)/);
+
+  const skeleton = s.combatants.find((c) => c.name === 'Skeleton 1')!.id;
+  s = applyAction(s, { type: 'damage', id: skeleton, amount: 13 }, deps());
+  s = applyAction(s, { type: 'endFight' }, deps());
+  assert.equal(s.status, 'exploring');
+  assert.deepEqual([s.map!.width, s.map!.height], [plan.width, plan.height], 'back on the floor plan');
+  assert.deepEqual(s.map!.tokens.find((t) => t.id === 'aria')!.at, [3, 3], 'where she stood before the fight');
+  const left = s.map!.tokens.find((t) => t.name === 'Skeleton 2')!;
+  assert.ok(left.at[0] >= 1 && left.at[0] <= 4, `the one left is in the millyard: ${left.at}`);
+  assert.equal(s.fog!.revealed.length, seen, 'the fog as it was');
+  assert.equal(s.dungeon!.plan, undefined);
+  assert.deepEqual(s.dungeon!.fights.map((f) => [f.room, f.defeated]), [['1', ['Skeleton 1']]]);
+  assert.throws(() => applyAction(s, { type: 'fight', room: '1', battle: MILLYARD }, deps()), /already on the plan: fight them there/);
+});
+
+test('the API fetches a room’s prepared battle from the wiki', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'battle-api-'));
+  writeFileSync(join(root, 'config.yaml'), 'upload:\n  url: https://wiki.example/api/sessions\n  format: ardent-weave\n');
+  const asked: string[] = [];
+  const doFetch: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    asked.push(`${url.pathname}${url.search}`);
+    if (url.pathname === '/api/dungeons/the-old-mill') return Response.json(WITH_BATTLE);
+    if (url.pathname === '/api/encounters/millyard-skeletons') return Response.json(MILLYARD);
+    if (url.pathname.endsWith('/progress')) return Response.json({ ok: true });
+    return Response.json({ error: 'No such thing.' }, { status: 404 });
+  };
+  const old = process.env.WIKI_UPLOAD_TOKEN;
+  process.env.WIKI_UPLOAD_TOKEN = 'k'.repeat(24);
+  try {
+    const store = new EncounterStore(join(root, 'data'), deps(), () => {});
+    const api = createApi({ password: 'pw', dataDir: join(root, 'data'), configStore: new ConfigStore(join(root, 'config.yaml')), jobs: new JobRunner(async () => {}), encounters: store, httpFetch: doFetch });
+    const call = (path: string, body: unknown) => api.request(path, { method: 'POST', headers: { Authorization: 'Bearer pw', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await call('/encounter', { dungeonId: 'the-old-mill', campaign: 'Crimson Tide' });
+    const none = await call('/encounter/actions', { type: 'fight', room: '2', prepared: true });
+    assert.equal(none.status, 400);
+    const fight = (await (await call('/encounter/actions', { type: 'fight', room: '1', prepared: true })).json()) as EncounterState;
+    assert.equal(fight.dungeon!.fight!.battle, 'Millyard Skeletons');
+    assert.ok(asked.includes('/api/encounters/millyard-skeletons?campaign=Crimson+Tide'), asked.join(', '));
+  } finally {
+    if (old === undefined) delete process.env.WIKI_UPLOAD_TOKEN;
+    else process.env.WIKI_UPLOAD_TOKEN = old;
+  }
 });

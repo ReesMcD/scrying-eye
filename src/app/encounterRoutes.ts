@@ -106,9 +106,17 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
     }
   });
   r.post('/encounter/actions', async (c) => {
-    const action = (await c.req.json().catch(() => null)) as EncounterAction | null;
+    let action = (await c.req.json().catch(() => null)) as EncounterAction | null;
     if (!action || typeof action !== 'object' || typeof action.type !== 'string') return c.json({ error: 'Send an action: { "type": "next" }' }, 400);
     try {
+      // A room's prepared battle (#109) comes from the wiki, not from the page.
+      if (action.type === 'fight' && action.prepared) {
+        const room = action.room;
+        const run = store.current()?.dungeon;
+        const id = run?.rooms.find((r) => r.key === room)?.encounter?.encounter_id;
+        if (!run || !id) return c.json({ error: 'That room has no prepared battle' }, 400);
+        action = { type: 'fight', room, battle: await wiki.get(id, run.campaign) };
+      }
       return c.json(store.act(action));
     } catch (err) {
       return failed(c, err);
