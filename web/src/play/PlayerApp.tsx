@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConditionName, PlayerCombatant, PlayerView } from '../../../src/shared/types';
 import { OrbMark } from '../icons';
-import { BattleMapView, type TokenInfo } from '../map/BattleMapView';
+import type { TokenInfo } from '../map/BattleMapView';
+import { MapView } from '../map/MapView';
 import { useArtPlan } from '../map/useArtPlan';
 import { useAreaTool } from '../map/AreaTool';
 import { DicePanel, RollList } from '../dice/DicePanel';
@@ -186,7 +187,7 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
     <section aria-label="Battle map">
       <h2>Map</h2>
       {view.me && area.controls}
-      <BattleMapView
+      <MapView
         map={map}
         info={info}
         canMove={(t) => t === myToken && !area.active}

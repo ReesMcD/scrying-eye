@@ -19,3 +19,12 @@
 .map-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .map-hint { margin: 8px 0 0; }
 .chip.on { background: var(--accent); color: var(--accent-text, #0b0d12); border-color: var(--accent); }
+
+/* 2D / 3D (#53) */
+.map-view { position: relative; }
+.map-view-switch { position: absolute; top: 8px; left: 8px; z-index: 3; opacity: 0.95; }
+.map-view-switch button { min-height: 34px; padding: 4px 12px; }
+.map3d canvas { cursor: grab; }
+.map3d-loading { display: grid; place-items: center; color: var(--muted); }
+.map3d-guide { position: absolute; z-index: 4; transform: translateX(-50%); pointer-events: none; padding: 4px 10px; border-radius: 8px; background: var(--surface, #131722); color: var(--text); font: 600 13px system-ui, sans-serif; white-space: nowrap; box-shadow: var(--shadow); }
+.map3d-guide.bad { color: var(--bad); }
