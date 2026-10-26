@@ -224,6 +224,9 @@ export function playersMap(map: BattleMap, hiddenTokens: ReadonlySet<string>): B
     height: map.height,
     ...(map.ground ? { ground: map.ground } : {}),
     ...(map.art ? { art: map.art } : {}),
+    // How dark it is and which level: players see the same darkness and torches as the DM.
+    ...(map.lighting ? { lighting: map.lighting } : {}),
+    ...(map.level ? { level: map.level } : {}),
     terrain: map.terrain.map((t) => {
       if (!t.secret) return t;
       const { secret: _secret, label: _label, ...wall } = t;
