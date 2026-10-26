@@ -64,12 +64,38 @@ export interface SceneFigure {
   height: number;
 }
 
+/** A light (#105): a torch on a wall, a brazier, a campfire, or a glow with no fixture. */
+export interface SceneLight {
+  kind: 'torch' | 'brazier' | 'campfire' | 'glow';
+  /** Where the flame is. */
+  x: number;
+  y: number;
+  z: number;
+  /** In squares. */
+  bright: number;
+  dim: number;
+  color: string;
+  /** A torch on a wall: the way it faces, out from the wall (radians about the up axis, 0 = toward -z). */
+  facing?: number;
+}
+
+/** A pit or sunken floor (negative elevation): its square and how deep, in squares. */
+export interface ScenePit {
+  x: number;
+  z: number;
+  depth: number;
+}
+
 export interface MapScene {
   width: number;
   height: number;
   boxes: SceneBox[];
   props: SceneProp[];
   water: SceneWater[];
+  lights: SceneLight[];
+  pits: ScenePit[];
+  /** Wherever no light reaches (the map's `lighting`). */
+  lighting: 'bright' | 'dim' | 'dark';
   /** The ground level at each square ("x,y" → height), where it isn't 0. */
   levels: Map<string, number>;
   /** The part worth framing: everything but solid rock (the whole map when there's none). */
@@ -82,6 +108,18 @@ const feet = (ft: number | undefined, fallback: number) => (typeof ft === 'numbe
 const seedOf = (x: number, y: number) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 1000 / 1000;
 
 const FIGURE_HEIGHT: Record<MapToken['size'], number> = { tiny: 0.45, small: 0.8, medium: 1.2, large: 2, huge: 3, gargantuan: 4 };
+
+/** Light fixtures by their asset word, with the light each gives when the map doesn't say (feet). */
+const FIXTURES = { torch: { bright: 20, dim: 40 }, brazier: { bright: 10, dim: 20 }, campfire: { bright: 20, dim: 40 } } as const;
+const FIRE = '#ffa64d';
+
+function fixtureOf(t: Terrain): keyof typeof FIXTURES | null {
+  const words = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
+  if (/\b(torch|torches|sconce|lantern)\b/.test(words)) return 'torch';
+  if (/\b(brazier|braziers)\b/.test(words)) return 'brazier';
+  if (/\b(campfire|fire|bonfire)\b/.test(words)) return 'campfire';
+  return null;
+}
 
 function propKind(t: Terrain): SceneProp['kind'] | null {
   const words = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
@@ -103,11 +141,17 @@ export function buildScene(map: BattleMap): MapScene {
   const boxes: SceneBox[] = [];
   const props: SceneProp[] = [];
   const water: SceneWater[] = [];
+  const lights: SceneLight[] = [];
+  const pits: ScenePit[] = [];
   const levels = new Map<string, number>();
 
-  // Raised ground first: what stands on it stands higher.
+  // Raised ground first: what stands on it stands higher. Negative is a pit, drawn as a hole.
   for (const t of map.terrain) {
     if (t.kind !== 'elevation') continue;
+    if (typeof t.height === 'number' && t.height < 0) {
+      for (const [x, y] of cellsOf(t, map.width, map.height)) pits.push({ x, z: y, depth: -t.height / FEET_PER_UNIT });
+      continue;
+    }
     const h = feet(t.height, 1);
     for (const [x, y] of cellsOf(t, map.width, map.height)) {
       levels.set(key(x, y), Math.max(levels.get(key(x, y)) ?? 0, h));
@@ -127,6 +171,7 @@ export function buildScene(map: BattleMap): MapScene {
 
   for (const t of map.terrain) {
     const cells = cellsOf(t, map.width, map.height);
+    addLights(t, cells);
     switch (t.kind) {
       case 'wall': {
         const h = feet(t.height, WALL_HEIGHT);
@@ -140,31 +185,36 @@ export function buildScene(map: BattleMap): MapScene {
         }
         break;
       }
-      case 'door':
+      case 'door': {
+        // `height` is the opening; the wall carries on above it.
+        const opening = feet(t.height, DOOR_HEIGHT);
         for (const [x, y] of cells) {
           const base = level(x, y);
           // It runs along the wall it's in: walls left and right → it spans x.
           const alongX = walled(map, solid, x - 1, y) || walled(map, solid, x + 1, y) || !(walled(map, solid, x, y - 1) || walled(map, solid, x, y + 1));
-          const wallTop = Math.max(WALL_HEIGHT, DOOR_HEIGHT + 0.2);
-          boxes.push({ part: 'lintel', x, z: y, w: 1, d: 1, y: base + DOOR_HEIGHT, h: wallTop - DOOR_HEIGHT });
+          const wallTop = Math.max(WALL_HEIGHT, opening + 0.2);
+          boxes.push({ part: 'lintel', x, z: y, w: 1, d: 1, y: base + opening, h: wallTop - opening });
           if (t.state === 'open') {
             // Swung open against the side of the doorway.
-            boxes.push(alongX ? { part: 'door', x, z: y, w: DOOR_THICKNESS, d: 1, y: base, h: DOOR_HEIGHT, state: 'open' } : { part: 'door', x, z: y, w: 1, d: DOOR_THICKNESS, y: base, h: DOOR_HEIGHT, state: 'open' });
+            boxes.push(alongX ? { part: 'door', x, z: y, w: DOOR_THICKNESS, d: 1, y: base, h: opening, state: 'open' } : { part: 'door', x, z: y, w: 1, d: DOOR_THICKNESS, y: base, h: opening, state: 'open' });
           } else {
             const mid = (1 - DOOR_THICKNESS) / 2;
-            boxes.push(alongX ? { part: 'door', x, z: y + mid, w: 1, d: DOOR_THICKNESS, y: base, h: DOOR_HEIGHT, state: t.state ?? 'closed' } : { part: 'door', x: x + mid, z: y, w: DOOR_THICKNESS, d: 1, y: base, h: DOOR_HEIGHT, state: t.state ?? 'closed' });
+            boxes.push(alongX ? { part: 'door', x, z: y + mid, w: 1, d: DOOR_THICKNESS, y: base, h: opening, state: t.state ?? 'closed' } : { part: 'door', x: x + mid, z: y, w: DOOR_THICKNESS, d: 1, y: base, h: opening, state: t.state ?? 'closed' });
           }
         }
         break;
+      }
       case 'cover': {
         // Half cover: about waist high; three-quarters: about chest high.
-        const h = t.cover === 'three-quarters' ? 1 : 0.6;
+        const h = feet(t.height, t.cover === 'three-quarters' ? 1 : 0.6);
         // Barrels and crates are wood; sarcophagi, tombs and low walls are stone.
         const part = /\b(sarcophag\w*|coffins?|tombs?|stone|statue|wall|altar)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? 'altar' : 'cover';
         for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h });
         break;
       }
       case 'object': {
+        // Torches, braziers and campfires are drawn with their light (addLights).
+        if (fixtureOf(t)) break;
         const kind = propKind(t);
         for (const [x, y] of cells) {
           const seed = seedOf(x, y);
@@ -199,7 +249,30 @@ export function buildScene(map: BattleMap): MapScene {
     }
   }
   boxes.push(...mergeMass(mass));
-  return { width: map.width, height: map.height, boxes, props, water, levels, open: openArea(map.width, map.height, new Set(mass.map(([x, y]) => key(x, y)))) };
+  return { width: map.width, height: map.height, boxes, props, water, lights, pits, lighting: map.lighting ?? 'bright', levels, open: openArea(map.width, map.height, new Set(mass.map(([x, y]) => key(x, y)))) };
+
+  /** A feature's light, and its fixture: a torch on a wall faces the open side; others stand on the floor. */
+  function addLights(t: Terrain, cells: Cell[]) {
+    const fixture = fixtureOf(t);
+    const given = t.light && typeof t.light.bright === 'number' && typeof t.light.dim === 'number' ? t.light : null;
+    // A torch, brazier or campfire lights up without being told; anything else only with a light.
+    const light = given ?? (fixture ? FIXTURES[fixture] : null);
+    if (!light) return;
+    const color = typeof given?.color === 'string' && /^#[0-9a-f]{6}$/i.test(given.color) ? given.color : FIRE;
+    const radius = { bright: light.bright / FEET_PER_UNIT, dim: Math.max(light.bright, light.dim) / FEET_PER_UNIT };
+    for (const [x, y] of cells) {
+      const base = level(x, y);
+      if (t.kind === 'wall' || t.kind === 'door') {
+        // On a wall: a torch on its face, toward the first open square beside it.
+        const side = ([[0, 1, Math.PI], [0, -1, 0], [1, 0, -Math.PI / 2], [-1, 0, Math.PI / 2]] as const).find(([dx, dy]) => x + dx >= 0 && y + dy >= 0 && x + dx < map.width && y + dy < map.height && !walled(map, solid, x + dx, y + dy));
+        const [dx, dy] = side ?? [0, 1];
+        lights.push({ kind: fixture === 'torch' || !fixture ? 'torch' : fixture, x: x + 0.5 + dx * 0.62, y: base + 1.35, z: y + 0.5 + dy * 0.62, ...radius, color, facing: side?.[2] ?? Math.PI });
+      } else {
+        const kind = fixture ?? 'glow';
+        lights.push({ kind, x: x + 0.5, y: base + (kind === 'torch' ? 1.3 : kind === 'brazier' ? 0.75 : kind === 'campfire' ? 0.25 : 0.3), z: y + 0.5, ...radius, color });
+      }
+    }
+  }
 }
 
 /** Buried rock as few big blocks (per height): rows of squares, then rows stacked when they line up. */

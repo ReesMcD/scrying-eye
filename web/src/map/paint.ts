@@ -75,6 +75,7 @@ export function paintTerrain(ctx: CanvasRenderingContext2D, map: BattleMap, s: n
       if (kind === 'difficult' && tile) for (const [x, y] of cells) paintCell(ctx, t, x, y, s, colors);
     });
   }
+  paintLights(ctx, map, s);
   for (const d of art?.decals ?? []) {
     const img = picture(d.id);
     if (!img) continue;
@@ -84,6 +85,31 @@ export function paintTerrain(ctx: CanvasRenderingContext2D, map: BattleMap, s: n
     ctx.rotate((d.rotate * Math.PI) / 180);
     ctx.drawImage(img, (-w / 2) * s, (-h / 2) * s, w * s, h * s);
     ctx.restore();
+  }
+}
+
+/** Lights (#105): a warm pool out to bright light's reach, and a dot where the flame is. */
+function paintLights(ctx: CanvasRenderingContext2D, map: BattleMap, s: number) {
+  for (const t of map.terrain) {
+    const fire = /\b(torch|brazier|campfire|fire|lantern|sconce)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`);
+    if (!t.light && !fire) continue;
+    const bright = (t.light?.bright ?? (fire ? 15 : 0)) / 5;
+    const color = t.light?.color && /^#[0-9a-f]{6}$/i.test(t.light.color) ? t.light.color : '#ffa64d';
+    for (const [x, y] of cellsOf(t, map.width, map.height)) {
+      const cx = (x + 0.5) * s;
+      const cy = (y + 0.5) * s;
+      if (bright > 0) {
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, bright * s);
+        g.addColorStop(0, `${color}55`);
+        g.addColorStop(1, `${color}00`);
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - bright * s, cy - bright * s, bright * s * 2, bright * s * 2);
+      }
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(2, s * 0.12), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -195,8 +221,14 @@ export function paintCell(ctx: CanvasRenderingContext2D, t: Terrain, x: number, 
       ctx.fillRect(px, py, s, s);
       break;
     case 'elevation':
-      ctx.fillStyle = 'rgba(170,150,220,0.35)';
-      ctx.fillRect(px, py, s, s);
+      // Raised: a light tint. A pit (negative): a dark hole, darker the deeper.
+      if ((t.height ?? 0) < 0) {
+        ctx.fillStyle = `rgba(12,10,8,${Math.min(0.92, 0.55 + -(t.height ?? 0) / 60)})`;
+        ctx.fillRect(px + s * 0.04, py + s * 0.04, s * 0.92, s * 0.92);
+      } else {
+        ctx.fillStyle = 'rgba(170,150,220,0.35)';
+        ctx.fillRect(px, py, s, s);
+      }
       break;
     case 'water':
       ctx.fillStyle = t.depth === 'deep' ? 'rgba(40,90,170,0.85)' : 'rgba(80,140,210,0.6)';

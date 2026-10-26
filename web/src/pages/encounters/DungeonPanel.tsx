@@ -94,7 +94,7 @@ function RoomCard({ room, run, state, act }: { room: Room; run: DungeonRun; stat
 
       {room.puzzle && (
         <div className="room-part">
-          <h3>Puzzle: {room.puzzle.name}</h3>
+          <h3>{room.puzzle.name ? `Puzzle: ${room.puzzle.name}` : 'Puzzle'}</h3>
           {room.puzzle.premise && <p className="pre-line">{room.puzzle.premise}</p>}
           {room.puzzle.solution && (
             <details>

@@ -72,7 +72,13 @@ export class WikiDungeons {
       return `Couldn't send dungeon progress to the wiki: ${(err as Error).message}`;
     }
     if (res.ok) return 'Dungeon progress sent to the wiki';
-    if (res.status === 404 || res.status === 405) return 'The wiki doesn’t take dungeon progress yet; nothing sent';
-    return `The wiki refused the dungeon progress (${res.status})`;
+    // A 404 with a JSON error is the wiki saying no (an unknown room); without one, it has no such route.
+    const error = await res
+      .json()
+      .then((b: unknown) => ((b as { error?: unknown } | null)?.error ?? null))
+      .then((e) => (typeof e === 'string' ? e : null))
+      .catch(() => null);
+    if (!error && (res.status === 404 || res.status === 405)) return 'The wiki doesn’t take dungeon progress yet; nothing sent';
+    return `The wiki refused the dungeon progress (${res.status}${error ? `: ${error}` : ''})`;
   }
 }

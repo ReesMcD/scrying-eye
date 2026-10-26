@@ -487,7 +487,10 @@ What's in it:
     two fingers or the right button to pan. You can drag tokens in 3D too, and the buttons look
     at whose turn it is, at your own character, straight down, or at the whole map. 2D stays the
     default, each device remembers its choice, spell areas are placed on the 2D map, and a
-    browser without WebGL keeps the 2D map. It loads only when someone switches to it.
+    browser without WebGL keeps the 2D map. It loads only when someone switches to it. It reads
+    the wiki's extra map fields (dnd-wiki #105): heights on walls, doors, cover and objects; pits
+    (negative elevation); torches, braziers and campfires that light what's near them; and a
+    dungeon's darkness (`lighting: dark`). The 2D map shows pits dark and lights as warm pools.
   - **Screen view** (Players' link → **Screen view**): the map in 3D filling a browser window,
     following whoever's turn it is, with the turn order and the latest rolls on top. It shows what
     the players see (their fog, no hidden creatures) and controls nothing. Share that window on

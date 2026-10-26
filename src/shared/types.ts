@@ -565,7 +565,8 @@ export interface WikiDungeonSummary {
 }
 
 export interface DungeonPuzzle {
-  name: string;
+  /** Null when the room only describes it in words (no wiki_puzzle page). */
+  name: string | null;
   premise: string | null;
   solution: string | null;
   clues: Array<{ text: string; where?: string | null }>;
@@ -607,6 +608,8 @@ export interface WikiDungeonRoom {
   puzzle: DungeonPuzzle | null;
   treasure: string | null;
   state?: RoomProgress;
+  /** Which floor it's on (#110): 1 unless the dungeon has several. */
+  level?: number;
 }
 
 /** One dungeon from the wiki, ready to run (GET /api/dungeons/<id>). */
@@ -619,8 +622,11 @@ export interface WikiDungeon {
   read_aloud: string | null;
   overview: string | null;
   dm_notes: string | null;
+  /** Level 1's plan (the DM copy, with rooms). */
   map: Record<string, unknown> | null;
   map_error?: string;
+  /** Every level's plan, in order (#110). */
+  maps?: Array<{ level: number; map: Record<string, unknown> | null; map_error?: string }>;
   party: WikiEncounter['party'];
   rooms: WikiDungeonRoom[];
 }
@@ -647,6 +653,8 @@ export interface DungeonRun {
   /** The fight going on now: which room it started in. */
   fight: { room: string | null; startedAt: number } | null;
   fights: DungeonFight[];
+  /** Secret doors the party found: a square of each, with its level when deeper than 1. */
+  secretDoorsFound?: Array<[number, number] | [number, number, number]>;
 }
 
 /** A roll made in the tracker or on a player's phone. */
