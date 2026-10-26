@@ -408,6 +408,8 @@ input.narrow { width: 64px; display: inline-block; }
 /* Dungeons (#106) */
 .dungeon-rooms { margin: 8px 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .dungeon-rooms-nav { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.dungeon-level { gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.dungeon-rooms-nav > span { align-self: center; white-space: nowrap; }
 .room-chip { white-space: nowrap; flex: none; }
 .room-chip.entered:not(.on) { border-color: var(--accent); }
 .room-chip.cleared:not(.on) { opacity: 0.7; }

@@ -655,6 +655,12 @@ export interface DungeonRun {
   fights: DungeonFight[];
   /** Secret doors the party found: a square of each, with its level when deeper than 1. */
   secretDoorsFound?: Array<[number, number] | [number, number, number]>;
+  /**
+   * A dungeon on several levels (#110): the level the party is on (its plan is the encounter's
+   * map), and every level's plan as it was left, with what the party had seen of it.
+   */
+  level?: number;
+  levels?: Array<{ level: number; map: BattleMap; revealed: string[] }>;
 }
 
 /** A roll made in the tracker or on a player's phone. */
@@ -758,6 +764,8 @@ export type EncounterAction =
   | { type: 'fight'; room: string }
   /** Dungeons: the fight is over; back to exploring. The fallen leave the map. */
   | { type: 'endFight' }
+  /** Dungeons on several levels: the party takes these stairs (`index` in the plan's terrain) to the level they lead to. */
+  | { type: 'stairs'; index: number }
   /** Rolls dice for the table; `by` is "dm" (the default) or a combatant id. */
   | { type: 'roll'; expression: string; label?: string; by?: string; secret?: boolean }
   /** Whether the table's rolls are posted to Discord too. */

@@ -11,16 +11,34 @@ type Room = DungeonRun['rooms'][number];
 export function DungeonPanel({ state, act }: { state: EncounterState; act: Act }) {
   const run = state.dungeon!;
   const room = run.rooms.find((r) => r.key === run.current) ?? run.rooms[0];
+  const levels = run.levels ? [...new Set(run.rooms.map((r) => r.level ?? 1))].sort((a, b) => a - b) : [null];
+  // Stairs on this level that lead to another (#110).
+  const stairs = run.levels ? (state.map?.terrain ?? []).flatMap((t, index) => (t.kind === 'floor' && t.to && t.to.level > 0 && /\bstairs?\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? [{ index, to: t.to.level, rises: t.rises }] : [])) : [];
   return (
     <section className="card dungeon" aria-label="Dungeon rooms">
-      <div className="dungeon-rooms-nav" role="tablist" aria-label="Rooms">
-        {run.rooms.map((r) => (
-          <button key={r.key} type="button" role="tab" aria-selected={r.key === room?.key} className={`chip room-chip${r.key === room?.key ? ' on' : ''}${r.state.cleared ? ' cleared' : r.state.entered ? ' entered' : ''}`} onClick={() => void act({ type: 'room', key: r.key })} title={roomStatus(r)}>
-            {r.key}. {r.name}
-            {r.state.cleared ? ' ✓' : ''}
-          </button>
-        ))}
-      </div>
+      {run.levels && (
+        <div className="row dungeon-level">
+          <strong>Level {run.level}</strong>
+          {stairs.map((x) => (
+            <button key={x.index} type="button" disabled={state.status !== 'exploring'} onClick={() => void act({ type: 'stairs', index: x.index })} title={state.status !== 'exploring' ? 'Finish the fight first' : 'The party’s tokens move to the stairs on that level'}>
+              Take the stairs {x.rises ?? (x.to > (run.level ?? 1) ? 'down' : 'up')} to level {x.to}
+            </button>
+          ))}
+        </div>
+      )}
+      {levels.map((level) => (
+        <div key={level ?? 'all'} className="dungeon-rooms-nav" role="tablist" aria-label={level === null ? 'Rooms' : `Rooms on level ${level}`}>
+          {level !== null && <span className="muted small">Level {level}</span>}
+          {run.rooms
+            .filter((r) => level === null || (r.level ?? 1) === level)
+            .map((r) => (
+              <button key={r.key} type="button" role="tab" aria-selected={r.key === room?.key} className={`chip room-chip${r.key === room?.key ? ' on' : ''}${r.state.cleared ? ' cleared' : r.state.entered ? ' entered' : ''}`} onClick={() => void act({ type: 'room', key: r.key })} title={roomStatus(r)}>
+                {r.key}. {r.name}
+                {r.state.cleared ? ' ✓' : ''}
+              </button>
+            ))}
+        </div>
+      ))}
       {run.read_aloud && !run.rooms.some((r) => r.state.entered) && (
         <blockquote className="read-aloud">{run.read_aloud}</blockquote>
       )}
@@ -35,7 +53,8 @@ function RoomCard({ room, run, state, act }: { room: Room; run: DungeonRun; stat
   const mark = (flag: 'entered' | 'cleared' | 'looted' | 'solved', value: boolean) => void act({ type: 'room', key: room.key, [flag]: value });
   const fighting = !!run.fight;
   const monstersHere = state.combatants.some((c) => c.kind !== 'pc');
-  const canFight = !fighting && state.status === 'exploring' && ((!room.spawned && !!room.encounter?.creatures.length) || monstersHere);
+  const elsewhere = run.level !== undefined && (room.level ?? 1) !== run.level;
+  const canFight = !fighting && !elsewhere && state.status === 'exploring' && ((!room.spawned && !!room.encounter?.creatures.length) || monstersHere);
   const nextHint = room.puzzle && room.hintsShown < room.puzzle.hints.length ? room.hintsShown + 1 : null;
 
   return (
@@ -44,6 +63,7 @@ function RoomCard({ room, run, state, act }: { room: Room; run: DungeonRun; stat
         <h2 style={{ margin: 0 }}>
           {room.key}. {room.name}
           {room.role && <span className="muted small"> · {room.role}</span>}
+          {elsewhere && <span className="muted small"> · level {room.level ?? 1}</span>}
         </h2>
         <div className="row room-flags">
           {!room.state.entered ? (
@@ -70,7 +90,7 @@ function RoomCard({ room, run, state, act }: { room: Room; run: DungeonRun; stat
             {room.encounter.difficulty ? <span className="muted"> · {room.encounter.difficulty}</span> : null}
           </p>
           {room.encounter.creatures.length > 0 && room.encounter.text && <p className="muted small pre-line">{room.encounter.text}</p>}
-          <button className="primary" disabled={!canFight} onClick={() => void act({ type: 'fight', room: room.key })} title={fighting ? 'Finish the fight going on first' : undefined}>
+          <button className="primary" disabled={!canFight} onClick={() => void act({ type: 'fight', room: room.key })} title={fighting ? 'Finish the fight going on first' : elsewhere ? `On level ${room.level ?? 1}: take the stairs first` : undefined}>
             {room.spawned ? 'Fight again here' : 'Fight here'}
           </button>
           {room.spawned && !monstersHere && <span className="muted small"> Nothing left standing here.</span>}

@@ -1,5 +1,5 @@
-import { placeToken, readMap, SIZE_SQUARES, type BattleMap, type Cell, type TokenSize } from '../shared/battlemap.js';
-import { roomCells, roomInView } from '../shared/mapSight.js';
+import { placeToken, readMap, SIZE_SQUARES, type BattleMap, type Cell, type Terrain, type TokenSize } from '../shared/battlemap.js';
+import { roomAt, roomCells, roomInView } from '../shared/mapSight.js';
 import type { Combatant, DungeonRun, EncounterAction, EncounterState, WikiDungeon } from '../shared/types.js';
 import { applyAction, combatantId, EncounterError, makeCombatant, newEncounter, setRevealed, sortOrder, uniqueTokenId, type RuleDeps } from './rules.js';
 
@@ -10,16 +10,19 @@ import { applyAction, combatantId, EncounterError, makeCombatant, newEncounter, 
  * the DM: the player view never includes `dungeon`.
  */
 
-type DungeonAction = Extract<EncounterAction, { type: 'room' | 'fight' | 'endFight' }>;
+type DungeonAction = Extract<EncounterAction, { type: 'room' | 'fight' | 'endFight' | 'stairs' }>;
 
 const sizeOf = (size: string | undefined): TokenSize => {
   const s = size?.toLowerCase();
   return s && s in SIZE_SQUARES ? (s as TokenSize) : 'medium';
 };
 
-/** Where the party starts: the way in (stairs), else the first room, else the middle of the map. */
+const isStairs = (t: Terrain) => t.kind === 'floor' && /\bstairs?\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`);
+
+/** Where the party starts: the way in (stairs from outside), else the first room, else the middle of the map. */
 function entrance(map: BattleMap): Cell {
-  const stairs = map.terrain.find((t) => t.kind === 'floor' && /\bstairs?\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`));
+  // On a plan with stairs down too, the way in is the pair that leads outside (level 0).
+  const stairs = map.terrain.find((t) => isStairs(t) && (t.to?.level ?? 0) === 0);
   if (stairs?.cells?.[0]) return stairs.cells[0];
   if (stairs?.rect) return [stairs.rect[0], stairs.rect[1]];
   const first = map.rooms?.[0];
@@ -32,7 +35,12 @@ function entrance(map: BattleMap): Cell {
 
 /** A dungeon ready to explore: the party at the way in, fog that follows what they see. */
 export function encounterFromDungeon(w: WikiDungeon, id: string, deps: RuleDeps): EncounterState {
-  const map = readMap(w.map);
+  // Several levels (#110): a plan for each, starting on level 1.
+  const levels = (w.maps ?? []).flatMap((x) => {
+    const plan = readMap(x.map);
+    return plan ? [{ level: x.level, map: { ...plan, tokens: [] }, revealed: [] as string[] }] : [];
+  });
+  const map = readMap(levels.length > 1 ? (levels.find((x) => x.level === 1) ?? levels[0]!).map : w.map);
   if (!map) throw new EncounterError(w.map_error ? `The dungeon's floor plan can't be used: ${w.map_error}` : `"${w.title}" has no floor plan yet: make one in the wiki (wiki_dungeon, action map)`);
   let s: EncounterState = { ...newEncounter(id, w.title, deps.now()), status: 'exploring', map: { ...map, tokens: [] } };
   s.notes = { summary: w.summary, read_aloud: w.read_aloud, setup: w.overview, tactics: null, changes: null, treasure: null };
@@ -45,6 +53,7 @@ export function encounterFromDungeon(w: WikiDungeon, id: string, deps: RuleDeps)
     current: w.rooms[0]?.key ?? null,
     fight: null,
     fights: [],
+    ...(levels.length > 1 ? { level: map.level ?? 1, levels } : {}),
   };
   const taken = new Set<string>();
   const door = entrance(map);
@@ -67,6 +76,12 @@ function roomOf(run: DungeonRun, key: string) {
   return room;
 }
 
+/** A room on another level than the party: say so, rather than act on the wrong plan. */
+function onThisLevel(s: EncounterState, room: { name: string; level?: number }): void {
+  const here = s.dungeon?.level;
+  if (here !== undefined && (room.level ?? 1) !== here) throw new EncounterError(`${room.name} is on level ${room.level ?? 1}: take the stairs first`);
+}
+
 /** Shows a room to the party on the map (when fog is on). */
 function revealRoom(s: EncounterState, key: string): void {
   const area = s.map?.rooms?.find((r) => r.id === key);
@@ -87,7 +102,7 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
         room.state[flag] = value;
         if (value) log(`${room.key}. ${room.name}: ${flag}`);
       }
-      if (action.entered) revealRoom(s, room.key);
+      if (action.entered && (s.dungeon?.level === undefined || (room.level ?? 1) === s.dungeon.level)) revealRoom(s, room.key);
       if (action.hintsShown !== undefined) {
         if (!Number.isInteger(action.hintsShown) || action.hintsShown < 0) throw new EncounterError('Bad hint count');
         room.hintsShown = Math.min(action.hintsShown, room.puzzle?.hints.length ?? 0);
@@ -97,6 +112,7 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
     case 'fight': {
       if (s.status !== 'exploring') throw new EncounterError('Finish this fight first');
       const room = roomOf(run, action.room);
+      onThisLevel(s, room);
       // Its creatures appear once; fighting there again carries on with whoever is still about.
       const groups = room.spawned ? [] : (room.encounter?.creatures ?? []);
       if (!groups.length && !s.combatants.some((c) => c.kind !== 'pc')) throw new EncounterError(room.spawned ? `Nothing is left to fight in ${room.name}` : `No creatures are listed for ${room.name}: add them with Add combatant, then start the fight`);
@@ -154,7 +170,40 @@ export function applyDungeonAction(s: EncounterState, action: DungeonAction, dep
       s.order = sortOrder(s.combatants);
       break;
     }
+    case 'stairs':
+      takeStairs(s, run, action.index, log);
+      break;
   }
+}
+
+/**
+ * The party goes up or down (#110): this level's plan is put away as it is (with whoever stays
+ * on it, and what the party saw), and the party comes out by the stairs' other end on the next.
+ */
+function takeStairs(s: EncounterState, run: DungeonRun, index: number, log: (text: string) => void): void {
+  if (s.status !== 'exploring') throw new EncounterError('Finish this fight first');
+  const stairs = s.map?.terrain[index];
+  const target = stairs?.to?.level;
+  if (!stairs || !isStairs(stairs) || !target) throw new EncounterError('Those stairs don’t lead to another level');
+  const there = run.levels?.find((x) => x.level === target);
+  if (!there || !run.levels || run.level === undefined) throw new EncounterError(`This dungeon has no level ${target}`);
+  const party = new Set(s.combatants.filter((c) => c.kind === 'pc' && c.tokenId).map((c) => c.tokenId!));
+  const leaving = s.map!.tokens.filter((t) => party.has(t.id));
+  const here = run.levels.find((x) => x.level === run.level)!;
+  here.map = { ...s.map!, tokens: s.map!.tokens.filter((t) => !party.has(t.id)) };
+  here.revealed = s.fog?.revealed ?? [];
+  // Out by the stairs' other end: where they say, else the stairs on that level leading back here.
+  const back = there.map.terrain.find((t) => isStairs(t) && t.to?.level === run.level);
+  const spot: Cell = stairs.to?.at ?? back?.cells?.[0] ?? (back?.rect ? [back.rect[0], back.rect[1]] : entrance(there.map));
+  let map = there.map;
+  for (const t of leaving) map = placeToken(map, { id: t.id, name: t.name, kind: t.kind, size: t.size }, spot);
+  s.map = map;
+  if (s.fog) s.fog = { ...s.fog, revealed: there.revealed };
+  log(`The party takes the stairs ${stairs.rises ?? (target > run.level ? 'down' : 'up')} to level ${target}`);
+  run.level = target;
+  // The DM's panel opens the room they come out in.
+  const arrived = roomAt(map, spot);
+  if (arrived && run.rooms.some((r) => r.key === arrived.id)) run.current = arrived.id;
 }
 
 /** What the wiki is told about the run so far (POST /api/dungeons/<id>/progress). */
