@@ -9,6 +9,12 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 export default defineConfig({
   root: here('.'),
   plugins: [react()],
-  build: { outDir: 'dist', emptyOutDir: true, rollupOptions: { input: { main: here('index.html'), play: here('play.html') } } },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: { input: { main: here('index.html'), play: here('play.html') } },
+    // The 3D map (three.js, ~600 kB) is its own chunk, fetched only when someone switches to 3D.
+    chunkSizeWarningLimit: 700,
+  },
   server: { proxy: { '/api': 'http://localhost:4400', '/p/': 'http://localhost:4410' } },
 });

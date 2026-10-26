@@ -3,7 +3,8 @@ import { api, apiBlob } from '../../api';
 import { doorsAt, isDifficult, secretDoorsAt, type BattleMap, type Cell, type MapToken } from '../../../../src/shared/battlemap';
 import { cellKey, roomAt } from '../../../../src/shared/mapSight';
 import { useAreaTool } from '../../map/AreaTool';
-import { BattleMapView, type TokenInfo } from '../../map/BattleMapView';
+import type { TokenInfo } from '../../map/BattleMapView';
+import { MapView } from '../../map/MapView';
 import { useArtPlan } from '../../map/useArtPlan';
 import type { ArtPlan, EncounterAction, EncounterState } from '../../types';
 import { Segmented } from '../../ui';
@@ -149,7 +150,7 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
         </div>
       )}
       {area.controls}
-      <BattleMapView
+      <MapView
         map={map}
         info={info}
         fog={state.fog ? { revealed, solid: false } : null}

@@ -21,7 +21,8 @@ export interface TokenInfo {
   mine?: boolean;
 }
 
-interface Props {
+/** What both map views (2D and 3D) take. */
+export interface MapViewProps {
   map: BattleMap;
   info: Record<string, TokenInfo>;
   canMove: (tokenId: string) => boolean;
@@ -58,7 +59,7 @@ const MIN_TOUCH_SQUARE = 22;
  * The battle map on a canvas (fast on big maps and old phones). Drag a token you may move: it
  * snaps to squares and shows the distance. Drag the map to pan; pinch or scroll to zoom.
  */
-export function BattleMapView(props: Props) {
+export function BattleMapView(props: MapViewProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ scale: 32, ox: 0, oy: 0 });

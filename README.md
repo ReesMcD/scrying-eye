@@ -459,6 +459,13 @@ What's in it:
     and refuses walls, closed doors, deep water and occupied squares. **Doors** opens, closes and
     locks them; **Difficult** marks or clears squares; combatants without a token are placed with a
     tap. A blank encounter can get a blank grid. Pinch or scroll to zoom, drag the map to pan.
+  - **3D:** the **2D / 3D** switch on the map (tracker and players' phones) shows the same map in
+    3D: walls and doors with height, raised ground, cover, trees and pillars, water, and the
+    tokens as figures with their names and HP. Drag to turn the camera, pinch or scroll to zoom,
+    two fingers or the right button to pan. You can drag tokens in 3D too, and the buttons look
+    at whose turn it is, at your own character, straight down, or at the whole map. 2D stays the
+    default, each device remembers its choice, spell areas are placed on the 2D map, and a
+    browser without WebGL keeps the 2D map. It loads only when someone switches to it.
   - **Exploring:** the DM sees each room's key and name. Secret doors are walls (dashed for the DM)
     until the party finds one; tap it under **Doors** to make it a door. **Fog** hides the map from
     players until it's revealed, by square or by room, or automatically as the party's tokens see
