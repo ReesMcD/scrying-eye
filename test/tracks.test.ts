@@ -112,3 +112,30 @@ test('the session page saves who was on each account (checked) and rebuilds the 
   assert.deepEqual(cleared.tracks, []);
   assert.equal(readSessionInfo(join(sessions, 's')).tracks, undefined, 'no switches: nothing stored');
 });
+
+test('an account shared all session stays one stretch when another account switches', async () => {
+  const PAT = '333333333333333333';
+  const { config: cfg } = parseConfig(`${YAML}  pat: { name: Pat, discord: ["${PAT}"] }\n  alex: { name: Alex, discord: ["${PAT}"] }\n`);
+  const dir = session(SWITCH);
+  const lines: TranscriptLine[] = [5, 20].map((sec) => ({ userId: PAT, speaker: 'pat_d', offsetMs: sec * 1000, startMs: T0 + sec * 1000, endMs: T0 + sec * 1000 + 500, text: `Line at ${sec}.` }));
+  const model = new FakeModel({ disambiguate: () => ({ labels: [{ line: 1, speaker: 1, confident: true }, { line: 2, speaker: 2, confident: true }] }) });
+  const r = await disambiguateLines(lines, cfg, model, dir, readSessionInfo(dir), {});
+  assert.match(model.calls.disambiguate[0]!.system, /Account "pat_d":\n {2}1\. Pat\n {2}2\. Alex/);
+  assert.deepEqual(r.lines.map((l) => l.speaker), ['Pat', 'Alex'], 'numbers from the one list work at any time');
+});
+
+test('a damaged session.json is never overwritten by a change; tracks: null resets', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracks-api-'));
+  writeFileSync(join(root, 'config.yaml'), YAML);
+  const dir = join(root, 'data', 'sessions', 's');
+  session(SWITCH, dir);
+  const api = createApi({ password: 'pw', dataDir: join(root, 'data'), configStore: new ConfigStore(join(root, 'config.yaml')), jobs: new JobRunner(async () => {}) });
+  const patch = (body: unknown) => api.request('/sessions/s', { method: 'PATCH', headers: { Authorization: 'Bearer pw', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  assert.deepEqual(((await (await patch({ tracks: null })).json()) as SessionDetail).tracks, []);
+
+  writeFileSync(paths.session(dir), '{"id":"s","startedAt":');
+  const refused = await patch({ title: 'New name' });
+  assert.equal(refused.status, 400);
+  assert.match(((await refused.json()) as { error: string }).error, /damaged/);
+  assert.equal(readFileSync(paths.session(dir), 'utf8'), '{"id":"s","startedAt":', 'left as it was');
+});

@@ -194,6 +194,6 @@ test('missing permissions are named, so the Re-add banner shows for Speak too (#
   const { BOT_PERMISSIONS, missingPermissions } = await import('../src/bot/commands.js');
   assert.deepEqual(missingPermissions(BOT_PERMISSIONS), []);
   assert.deepEqual(missingPermissions(BOT_PERMISSIONS & ~PermissionFlagsBits.Speak), ['Speak']);
-  assert.deepEqual(missingPermissions(PermissionFlagsBits.ViewChannel | PermissionFlagsBits.Connect), ['Send Messages', 'Attach Files', 'Embed Links', 'Speak', 'Send Polls']);
+  assert.deepEqual(missingPermissions(PermissionFlagsBits.ViewChannel | PermissionFlagsBits.Connect), ['Send Messages', 'Attach Files', 'Embed Links', 'Speak', 'Send Polls', 'Read Message History']);
   assert.deepEqual(missingPermissions(PermissionFlagsBits.Administrator), []);
 });

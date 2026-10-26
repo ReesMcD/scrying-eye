@@ -300,7 +300,11 @@ export class BotService extends EventEmitter implements BotControl {
       results: async (channelId, messageId) => {
         const channel = await sendable(channelId);
         if (!('messages' in channel)) return null;
-        const message = await channel.messages.fetch(messageId).catch(() => null);
+        // Deleted (Unknown Message): nothing more to collect. Anything else (outage, permissions) is retried later.
+        const message = await channel.messages.fetch(messageId).catch((err: unknown) => {
+          if (err instanceof DiscordAPIError && err.code === 10008) return null;
+          throw err;
+        });
         if (!message?.poll) return null;
         const answers = await Promise.all(
           [...message.poll.answers.values()].map(async (a) => ({

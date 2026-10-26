@@ -91,7 +91,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   });
   // How a fight from the wiki went goes back to it (#58).
   encounters.on('ended', (outcome: EncounterOutcome) => {
-    if (outcome.source) void wikiEncounters.sendResult(outcome).then(log);
+    if (outcome.source) wikiEncounters.sendResult(outcome).then(log, (err: Error) => log(`Couldn't send the result to the wiki: ${err.message}`));
   });
   // The table's rolls, when the DM turned on posting them (#58).
   encounters.on('roll', (roll: EncounterRoll) => {

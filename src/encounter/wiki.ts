@@ -83,7 +83,14 @@ export class WikiEncounters {
    */
   async sendResult(outcome: EncounterOutcome): Promise<string> {
     if (!outcome.source) return 'Not from the wiki: nothing to send';
-    const url = encountersUrl(this.config());
+    let url: URL;
+    try {
+      url = encountersUrl(this.config());
+    } catch (err) {
+      // The wiki settings changed since the fight started.
+      if (err instanceof WikiEncountersError) return `Not sent to the wiki: ${err.message}`;
+      throw err;
+    }
     url.pathname += `/${encodeURIComponent(outcome.source.wikiId)}/result`;
     url.searchParams.set('campaign', outcome.source.campaign);
     const token = this.token();

@@ -10,6 +10,7 @@ import { uploadStatus } from '../upload/recapUpload.js';
 import { summaryPaths, type SummaryMeta } from '../summary/summarizeSession.js';
 import type { DiscordAccount, GuildInfo, SessionDetail, SessionSummary, TrackSwitch } from '../shared/types.js';
 import type { Config } from '../config/schema.js';
+import { DamagedFileError } from '../util/files.js';
 import { pendingUnpaired } from './unpaired.js';
 
 export type { DiscordAccount, SessionDetail, SessionSummary };
@@ -153,6 +154,15 @@ export function readTracks(raw: unknown, config: Config | null): TrackSwitch[] {
  * default; an empty `tracks` puts the settings back. The folder (and id) never change.
  */
 export function updateSession(dir: string, change: { title?: string | null; campaign?: string | null; tracks?: TrackSwitch[] }, config: Config | null): void {
+  // Never write over a damaged session.json: what's still in it could be recovered by hand.
+  if (existsSync(paths.session(dir))) {
+    try {
+      readJson(paths.session(dir));
+    } catch (err) {
+      if (err instanceof DamagedFileError) throw new Error(`This session's session.json is damaged, so it can't be changed here. ${err.message}`);
+      throw err;
+    }
+  }
   const info = readSessionInfo(dir);
   const next: SessionInfo = { ...info };
   if (change.title !== undefined) {

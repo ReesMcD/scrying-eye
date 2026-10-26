@@ -27,6 +27,16 @@ const blank = (channelId: string): Draft => ({
   enabled: true,
 });
 
+/** The next whole hour, as "2026-10-27T10:00" wall-clock time in the polls' time zone (what the server reads). */
+function nextHour(timeZone: string): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' })
+      .formatToParts(Date.now() + 3_600_000)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:00`;
+}
+
 function describeSchedule(s: PollSchedule): string {
   return s.kind === 'weekly' ? `Every ${WEEKDAYS[s.weekday]} at ${s.time}` : `Once, ${s.at.replace('T', ' at ')}`;
 }
@@ -248,7 +258,7 @@ function PollForm({ draft: initial, isNew, state, busy, onSave, onCancel }: { dr
           { value: 'weekly', label: 'Every week' },
           { value: 'once', label: 'Once' },
         ]}
-        onChange={(kind) => set({ schedule: kind === 'weekly' ? { kind: 'weekly', weekday: 1, time: '10:00' } : { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString().slice(0, 13) + ':00' } })}
+        onChange={(kind) => set({ schedule: kind === 'weekly' ? { kind: 'weekly', weekday: 1, time: '10:00' } : { kind: 'once', at: nextHour(state.timeZone) } })}
       />
       <div className="row" style={{ marginTop: 8 }}>
         {d.schedule.kind === 'weekly' ? (

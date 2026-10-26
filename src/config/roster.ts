@@ -63,9 +63,9 @@ export function rosterAt<R extends Pick<Config, 'speakers'>>(roster: R, tracks: 
   return { ...roster, speakers };
 }
 
-/** When who's-on-which-account changes in a session: 0, then each switch time, in order. */
-export function trackEpochs(tracks: readonly TrackSwitch[] | undefined): number[] {
-  return [...new Set([0, ...(tracks ?? []).map((t) => t.fromMs)])].sort((a, b) => a - b);
+/** When who's-on-which-account changes in a session (or on one account): 0, then each switch time, in order. */
+export function trackEpochs(tracks: readonly TrackSwitch[] | undefined, account?: string): number[] {
+  return [...new Set([0, ...(tracks ?? []).filter((t) => !account || t.account === account).map((t) => t.fromMs)])].sort((a, b) => a - b);
 }
 
 /** The roster for questions about the whole session (who's unpaired, who's at the table): everyone on each account at any time. */
