@@ -18,7 +18,7 @@ terminal steps below:
 - **Live transcript:** turn it on under Settings → Transcription, start a recording and talk: lines should appear on the Record page (Mac and phone) within about 15 seconds.
 - **Slash commands:** in Discord, run `/status` (not recording), join a voice channel and run `/record`, then `/status` again and `/stop`. If the Record page shows **Re-add the bot**, use that link first.
 - **Music:** while recording, open the **Music** tab, paste a YouTube link and press play in the browser below. Everyone in the channel should hear it. Try the volume slider, **Mute**, a second tab at once, and closing a tab. Check the recording doesn't contain the music. Save the tabs as a scene, open a different page, then tap the scene: it should crossfade back. Add a sound effect and tap it over the music.
-- **Audio:** for a listen-back check, the files are under `~/Library/Application Support/Session Bot/data/sessions/<session>/audio/`.
+- **Audio:** for a listen-back check, the files are under `<data folder>/data/sessions/<session>/audio/` (Settings → Keys & phone shows the data folder).
 
 The pass criteria in 2.3 are the same. If something fails, send the session's folder name and
 what you saw.

@@ -188,3 +188,12 @@ test('reconnects: separate recovered drops never stop a recording; 10 failures i
   for (let i = 0; i < 10; i++) assert.equal(dead.attempt(), true);
   assert.equal(dead.attempt(), false, 'the 11th failure in a row gives up');
 });
+
+test('missing permissions are named, so the Re-add banner shows for Speak too (#63)', async () => {
+  const { PermissionFlagsBits } = await import('discord.js');
+  const { BOT_PERMISSIONS, missingPermissions } = await import('../src/bot/commands.js');
+  assert.deepEqual(missingPermissions(BOT_PERMISSIONS), []);
+  assert.deepEqual(missingPermissions(BOT_PERMISSIONS & ~PermissionFlagsBits.Speak), ['Speak']);
+  assert.deepEqual(missingPermissions(PermissionFlagsBits.ViewChannel | PermissionFlagsBits.Connect), ['Send Messages', 'Attach Files', 'Embed Links', 'Speak']);
+  assert.deepEqual(missingPermissions(PermissionFlagsBits.Administrator), []);
+});

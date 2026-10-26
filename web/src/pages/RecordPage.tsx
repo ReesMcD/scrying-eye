@@ -4,7 +4,7 @@ import { hms, speakerHue } from '../format';
 import { href } from '../router';
 import { campaignFor, campaignForChannel, charactersByAccount } from '../../../src/config/roster';
 import type { BotStatus, Config, ConfigState, GuildInfo, RecordingStatus, SessionSummary } from '../types';
-import { Badge, Empty } from '../ui';
+import { Empty } from '../ui';
 import { LiveTranscript } from './LiveTranscript';
 
 const SKIP_REASON: Record<string, string> = { bot: 'bot', ignored_user: 'on the ignore list', self: 'this bot' };
@@ -26,6 +26,10 @@ export function RecordPage() {
     void loadGuilds();
     api<ConfigState>('/config').then((c) => setConfig(c.config), () => {});
     return subscribe({
+      onReconnect: () => {
+        api<BotStatus>('/bot').then(setStatus, () => {});
+        void loadGuilds();
+      },
       onBot: (s) => {
         setStatus(s);
         void loadGuilds(); // voice channel membership changes arrive as status events
@@ -156,10 +160,11 @@ function BotBanner({ status }: { status: BotStatus }) {
         </p>
         {status.commands === 'needs-invite' && status.inviteUrl && (
           <div className="card notice">
-            <strong>One step for slash commands</strong>
+            <strong>{status.missingPermissions?.length ? 'The bot is missing a permission' : 'One step for slash commands'}</strong>
             <p className="small" style={{ margin: '6px 0 10px' }}>
-              The bot was added to your server without permission for slash commands (or to speak, which music needs). Open this link and add it again: nothing is lost,
-              and /record, /stop and /status appear in Discord.
+              {status.missingPermissions?.length
+                ? `Its role in your server lacks ${status.missingPermissions.join(', ')}${status.missingPermissions.includes('Speak') ? ' (music needs Speak)' : ''}. Open this link and add it again, or give its role those permissions under Server Settings → Roles.`
+                : 'The bot was added to your server without permission for slash commands. Open this link and add it again: nothing is lost, and /record, /stop and /status appear in Discord.'}
             </p>
             <a className="button primary" href={status.inviteUrl} target="_blank" rel="noreferrer">
               Re-add the bot ↗

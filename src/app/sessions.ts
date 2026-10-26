@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { listUtterances, paths, readJson, readParticipants, readSessionInfo, writeJson, type Participant, type SessionInfo } from '../session/layout.js';
+import { listUtterances, paths, readJson, readParticipants, readSessionInfo, skipDamaged, writeJson, type SessionInfo } from '../session/layout.js';
 import { sessionTitle } from '../session/title.js';
 import { campaignFor } from '../config/roster.js';
 import { configSchema } from '../config/schema.js';
 import type { TranscriptLine } from '../transcript/merge.js';
-import { readEditState, recapState, type RecapState } from '../summary/recapEdits.js';
+import { readEditState, recapState } from '../summary/recapEdits.js';
 import { uploadStatus } from '../upload/recapUpload.js';
 import { summaryPaths, type SummaryMeta } from '../summary/summarizeSession.js';
 import type { DiscordAccount, GuildInfo, SessionDetail, SessionSummary } from '../shared/types.js';
@@ -34,18 +34,50 @@ function segmentsOf(dir: string, file: string): { session?: SessionInfo; lines: 
 /** Settings to name sessions by; the defaults while config.yaml has an error. */
 const settings = (config: Config | null) => config ?? configSchema.parse({});
 
+interface SessionStats {
+  speakers: string[];
+  utterances: number;
+}
+const statsCache = new Map<string, { stamp: string; stats: SessionStats }>();
+
+/** Size and modification time of the files the stats come from: if none changed, neither did they. */
+function statsStamp(dir: string): string {
+  const one = (path: string) => {
+    try {
+      const st = statSync(path);
+      return `${st.size}:${st.mtimeMs}`;
+    } catch {
+      return '-';
+    }
+  };
+  return [paths.segments(dir), paths.utterances(dir), paths.participants(dir), paths.audioDir(dir)].map(one).join('|');
+}
+
+/**
+ * Who spoke and how many clips, for the session list (#39). Working these out reads the whole
+ * transcript and lists every audio file, so they're kept until one of those files changes: the
+ * list then costs a few stats per session instead.
+ */
+function sessionStats(dir: string): SessionStats {
+  const stamp = statsStamp(dir);
+  const cached = statsCache.get(dir);
+  if (cached?.stamp === stamp) return cached.stats;
+  const participants = readParticipants(dir);
+  const utterances = listUtterances(dir);
+  const lines = segmentsOf(dir, paths.segments(dir)).lines;
+  const speakers = lines.length ? [...new Set(lines.map((l) => l.speaker))] : [...new Set(utterances.map((u) => participants[u.userId]?.displayName ?? u.userId))];
+  const stats = { speakers, utterances: utterances.length };
+  statsCache.set(dir, { stamp, stats });
+  return stats;
+}
+
 export function describeSession(dataDir: string, id: string, config: Config | null = null): SessionSummary | undefined {
   const dir = sessionDirFor(dataDir, id);
   if (!dir) return undefined;
   const info = readSessionInfo(dir) as SessionInfo & { source?: string; interrupted?: boolean };
   const cfg = settings(config);
   const campaign = campaignFor(cfg, info);
-  const participants = readParticipants(dir);
-  const utterances = listUtterances(dir);
-  const lines = segmentsOf(dir, paths.segments(dir)).lines;
-  const speakers = lines.length
-    ? [...new Set(lines.map((l) => l.speaker))]
-    : [...new Set(utterances.map((u) => participants[u.userId]?.displayName ?? u.userId))];
+  const { speakers, utterances } = sessionStats(dir);
   return {
     id,
     title: sessionTitle(info, cfg),
@@ -59,9 +91,9 @@ export function describeSession(dataDir: string, id: string, config: Config | nu
     ...(info.interrupted ? { interrupted: true } : {}),
     ...(info.audioDeletedAt ? { audioDeletedAt: info.audioDeletedAt } : {}),
     speakers,
-    utterances: utterances.length,
+    utterances,
     has: {
-      audio: utterances.length > 0,
+      audio: utterances > 0,
       transcript: existsSync(paths.transcript(dir)),
       speakerLabels: existsSync(paths.disambiguatedTranscript(dir)),
       summary: existsSync(summaryPaths.markdown(dir)),
@@ -73,7 +105,7 @@ export function listSessions(dataDir: string, config: Config | null = null): Ses
   const root = sessionsRoot(dataDir);
   if (!existsSync(root)) return [];
   return readdirSync(root)
-    .map((id) => describeSession(dataDir, id, config))
+    .map((id) => skipDamaged(id, () => describeSession(dataDir, id, config)))
     .filter((s): s is SessionSummary => !!s)
     .sort((a, b) => b.startedAt - a.startedAt);
 }

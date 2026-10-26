@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { resolve } from 'node:path';
 import { Document, isMap, isScalar, parseDocument, YAMLMap } from 'yaml';
-import { z } from 'zod';
 import { configSchema, explainKeyErrors, type Config } from '../config/schema.js';
 import { ConfigError, parseConfig } from '../config/load.js';
 import type { ConfigState, FieldError } from '../shared/types.js';
@@ -44,10 +44,10 @@ export class ConfigStore {
     const doc = current.trim() ? parseDocument(current, { intAsBigInt: true }) : new Document({});
     if (doc.errors.length || !isMap(doc.contents)) {
       // Unreadable file: start fresh rather than refusing to save.
-      writeFileSync(this.path, new Document(withoutDefaults(stripUndefined(value), DEFAULTS) ?? {}).toString());
+      writeFileAtomic(this.path, new Document(withoutDefaults(stripUndefined(value), DEFAULTS) ?? {}).toString());
     } else {
       apply(doc, doc.contents, stripUndefined(value) as Record<string, unknown>, DEFAULTS);
-      writeFileSync(this.path, doc.toString());
+      writeFileAtomic(this.path, doc.toString());
     }
     return { config, errors: [] };
   }
@@ -59,7 +59,7 @@ export class ConfigStore {
     } catch (err) {
       return { errors: [{ path: '', message: err instanceof Error ? err.message : String(err) }] };
     }
-    writeFileSync(this.path, yaml.endsWith('\n') ? yaml : `${yaml}\n`);
+    writeFileAtomic(this.path, yaml.endsWith('\n') ? yaml : `${yaml}\n`);
     return { errors: [] };
   }
 }

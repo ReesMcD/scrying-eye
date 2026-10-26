@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { accessSync, constants, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileAtomic } from '../../src/util/files.js';
+import { accessSync, constants, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHUNK_FRAMES, FrameChunker, SPOTIFY_RATE, findLibrespot, librespotArgs, parseLibrespotLine } from '../../src/music/spotify.js';
 import type { SpotifyStatus } from '../../src/music/control.js';
@@ -85,7 +86,7 @@ export class SpotifyConnect {
 
   update(patch: { enabled?: boolean; volume?: number; muted?: boolean }): void {
     this.settings = { ...this.settings, ...patch };
-    writeFileSync(this.settingsFile, JSON.stringify(this.settings));
+    writeFileAtomic(this.settingsFile, JSON.stringify(this.settings));
     if (patch.enabled === true && !this.child) {
       this.failures = 0;
       this.error = undefined;

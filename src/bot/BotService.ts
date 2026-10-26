@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, type AutocompleteInteraction, type ChatInputCommandInteraction, type Guild, type VoiceBasedChannel } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, DiscordAPIError, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits, type AutocompleteInteraction, type ChatInputCommandInteraction, type Guild, type VoiceBasedChannel } from 'discord.js';
 import { campaignForChannel } from '../config/roster.js';
-import { COMMANDS, inviteUrl, runCommand, type CommandName } from './commands.js';
+import { COMMANDS, inviteUrl, missingPermissions, runCommand, type CommandName } from './commands.js';
 import { encounterChoices, runEncounterCommand, type EncounterCommandDeps, type EncounterPost } from './encounterCommand.js';
 import { loadConfig } from '../config/load.js';
-import { listUtterances, paths, readJson, writeJson, type SessionInfo } from '../session/layout.js';
+import { listUtterances, paths, readJson, skipDamaged, writeJson, type SessionInfo } from '../session/layout.js';
 import { SessionRecorder } from '../recording/SessionRecorder.js';
 import { MusicBroadcast } from '../music/broadcast.js';
 import type { ConfigStore } from '../app/configStore.js';
@@ -46,7 +46,7 @@ export function recoverInterrupted(dataDir: string): string[] {
   const recovered: string[] = [];
   for (const id of readdirSync(root)) {
     const dir = join(root, id);
-    const info = readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir));
+    const info = skipDamaged(id, () => readJson<SessionInfo & { source?: string; interrupted?: boolean }>(paths.session(dir)));
     if (!info || info.source !== 'bot' || info.stoppedAt) continue;
     const last = listUtterances(dir).reduce((m, u) => Math.max(m, statSync(u.path).mtimeMs), info.startedAt);
     writeJson(paths.session(dir), { ...info, stoppedAt: Math.round(last), interrupted: true });
@@ -107,8 +107,27 @@ export class BotService extends EventEmitter implements BotControl {
       ...(this.client?.user ? { user: this.client.user.tag } : {}),
       ...(this.error ? { error: this.error } : {}),
       recording: this.recorder ? { ...this.recorder.status(), ...(this.live ? { live: true } : {}) } : null,
-      ...(this.commandsReady ? { commands: this.commandsRefused.size ? 'needs-invite' : 'ready' } : {}),
-      ...(this.commandsRefused.size && this.client?.application ? { inviteUrl: inviteUrl(this.client.application.id) } : {}),
+      ...this.inviteStatus(),
+    };
+  }
+
+  /**
+   * Whether the bot should be re-added: a server refused its slash commands, or its role lacks a
+   * permission it needs (Speak for music, say). Discord now gives the commands scope with the bot,
+   * so a missing permission is the usual reason (#63).
+   */
+  private inviteStatus(): Pick<BotStatus, 'commands' | 'inviteUrl' | 'missingPermissions'> {
+    if (!this.commandsReady) return {};
+    const missing = new Set<string>();
+    for (const guild of this.client?.guilds.cache.values() ?? []) {
+      const me = guild.members.me;
+      if (me) for (const name of missingPermissions(me.permissions.bitfield)) missing.add(name);
+    }
+    const needed = this.commandsRefused.size > 0 || missing.size > 0;
+    return {
+      commands: needed ? 'needs-invite' : 'ready',
+      ...(needed && this.client?.application ? { inviteUrl: inviteUrl(this.client.application.id) } : {}),
+      ...(missing.size ? { missingPermissions: [...missing] } : {}),
     };
   }
 
@@ -129,6 +148,9 @@ export class BotService extends EventEmitter implements BotControl {
       else if (i.isAutocomplete() && i.commandName === 'record') void this.suggestCampaigns(i);
     });
     client.on(Events.VoiceStateUpdate, () => this.emitStatus());
+    // A role change can give or take a permission the bot needs (the Re-add banner follows).
+    client.on(Events.GuildRoleUpdate, () => this.emitStatus(true));
+    client.on(Events.GuildMemberUpdate, (_old, member) => member.id === client.user?.id && this.emitStatus(true));
     client.on(Events.Error, (err) => this.log(`discord error: ${err.message}`));
     client.on(Events.ShardDisconnect, () => this.setState('connecting'));
     client.on(Events.ShardResume, () => this.setState('ready'));
@@ -285,6 +307,10 @@ export class BotService extends EventEmitter implements BotControl {
     if (this.recorder) throw new Error(`Already recording #${this.recorder.status().channelName}; stop that first`);
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel?.isVoiceBased()) throw new Error('That voice channel is not visible to the bot');
+    // A channel can override the server's permissions: say so plainly instead of timing out.
+    const allowed = channel.guild.members.me ? channel.permissionsFor(channel.guild.members.me) : null;
+    if (allowed && !allowed.has(PermissionFlagsBits.Connect)) throw new Error(`The bot isn't allowed to connect to #${channel.name}: give its role Connect there (channel settings → Permissions)`);
+    if (allowed && !allowed.has(PermissionFlagsBits.Speak)) this.log(`#${channel.name}: the bot can't speak there, so music won't be heard (recording works)`);
 
     const { config } = loadConfig(this.opts.configPath);
     if (opts.campaign && !config.campaigns[opts.campaign]) throw new Error('No such campaign');

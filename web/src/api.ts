@@ -92,6 +92,11 @@ type Listener = {
   onMusic?: (status: MusicStatus) => void;
   onLive?: (update: LiveUpdate) => void;
   onEncounter?: (state: EncounterState | null) => void;
+  /**
+   * The stream came back after dropping (a phone that slept, Wi-Fi that blinked). Events in the
+   * gap are lost, so reload whatever the page shows (#40).
+   */
+  onReconnect?: () => void;
 };
 const listeners = new Set<Listener>();
 let stopStream: (() => void) | undefined;
@@ -100,6 +105,18 @@ let stopStream: (() => void) | undefined;
 function startStream(): () => void {
   let stopped = false;
   let controller: AbortController | undefined;
+  let connectedBefore = false;
+  let wake: (() => void) | undefined;
+  // Back from the background: a connection that slept with the phone can hang without failing, so
+  // start a fresh one now instead of waiting to notice.
+  const visible = () => {
+    if (document.visibilityState !== 'visible') return;
+    controller?.abort();
+    wake?.();
+  };
+  const online = () => wake?.();
+  document.addEventListener('visibilitychange', visible);
+  window.addEventListener('online', online);
   const run = async () => {
     while (!stopped) {
       controller = new AbortController();
@@ -111,6 +128,8 @@ function startStream(): () => void {
           return;
         }
         if (!res.ok || !res.body) throw new Error(`events ${res.status}`);
+        if (connectedBefore) listeners.forEach((l) => l.onReconnect?.());
+        connectedBefore = true;
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buf = '';
         for (;;) {
@@ -134,13 +153,22 @@ function startStream(): () => void {
       } catch {
         /* reconnect below */
       }
-      if (!stopped) await new Promise((r) => setTimeout(r, 3000));
+      if (!stopped)
+        await new Promise<void>((r) => {
+          const t = setTimeout(r, 3000);
+          wake = () => {
+            clearTimeout(t);
+            r();
+          };
+        });
     }
   };
   void run();
   return () => {
     stopped = true;
     controller?.abort();
+    document.removeEventListener('visibilitychange', visible);
+    window.removeEventListener('online', online);
   };
 }
 
@@ -156,6 +184,6 @@ export function subscribe(listener: Listener): () => void {
   };
 }
 
-export function subscribeJobs(onJob: (job: Job) => void): () => void {
-  return subscribe({ onJob });
+export function subscribeJobs(onJob: (job: Job) => void, onReconnect?: () => void): () => void {
+  return subscribe({ onJob, ...(onReconnect ? { onReconnect } : {}) });
 }

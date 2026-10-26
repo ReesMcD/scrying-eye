@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileAtomic } from '../src/util/files.js';
+import { existsSync, readFileSync } from 'node:fs';
 
 export interface Secrets {
   discord?: string;
@@ -38,7 +39,7 @@ export class SecretStore {
   }
 
   write(secrets: Secrets): void {
-    writeFileSync(this.file, this.cipher.encrypt(JSON.stringify(secrets)), { mode: 0o600 });
+    writeFileAtomic(this.file, this.cipher.encrypt(JSON.stringify(secrets)), { mode: 0o600 });
   }
 
   update(patch: Partial<Omit<Secrets, 'password'>> & { password?: string }): Secrets {

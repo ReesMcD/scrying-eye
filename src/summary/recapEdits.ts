@@ -1,4 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { writeFileAtomic } from '../util/files.js';
 import { dirname, join } from 'node:path';
 import { readJson, writeJson } from '../session/layout.js';
 import type { RecapState } from '../shared/types.js';
@@ -35,7 +36,7 @@ export function saveRecapEdit(sessionDir: string, markdown: string, now = new Da
     mkdirSync(dirname(recapPaths.generated(sessionDir)), { recursive: true });
     copyFileSync(file, recapPaths.generated(sessionDir));
   }
-  writeFileSync(file, markdown.endsWith('\n') ? markdown : `${markdown}\n`);
+  writeFileAtomic(file, markdown.endsWith('\n') ? markdown : `${markdown}\n`);
   const state: EditState = { editedAt: now.toISOString() };
   writeJson(recapPaths.editState(sessionDir), state);
   return state;
@@ -55,7 +56,7 @@ export function writeGeneratedRecap(sessionDir: string, markdown: string, now = 
   }
   rmSync(recapPaths.editState(sessionDir), { force: true });
   rmSync(recapPaths.generated(sessionDir), { force: true });
-  writeFileSync(file, markdown);
+  writeFileAtomic(file, markdown);
   return backup;
 }
 

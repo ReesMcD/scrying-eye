@@ -12,7 +12,7 @@ export function EncountersPage() {
 
   useEffect(() => {
     api<EncounterState | null>('/encounter').then(setState, (e: Error) => setError(e.message));
-    return subscribe({ onEncounter: setState });
+    return subscribe({ onEncounter: setState, onReconnect: () => void api<EncounterState | null>('/encounter').then(setState, () => {}) });
   }, []);
 
   /** Sends one change; the answer (and the live event) carry the new state. */
