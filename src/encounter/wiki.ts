@@ -134,7 +134,19 @@ export function encounterFromWiki(w: WikiEncounter, id: string, now: number): En
   };
   for (const p of w.party) {
     const t = tokenFor(p.name, p.name, 'pc');
-    add(makeCombatant(combatantId(p.name, taken), { name: p.name, kind: 'pc', ac: p.ac, hp: p.hp, player: p.player, ...(t ? { tokenId: t.id } : {}) }));
+    add(
+      makeCombatant(combatantId(p.name, taken), {
+        name: p.name,
+        kind: 'pc',
+        ac: p.ac,
+        hp: p.hp,
+        player: p.player,
+        ...(typeof p.dex === 'number' ? { dex: p.dex } : {}),
+        // The sheet's own initiative bonus wins over one worked out from Dexterity (feats, Alert, items).
+        ...(typeof p.initiative_bonus === 'number' ? { initiativeBonus: p.initiative_bonus } : {}),
+        ...(t ? { tokenId: t.id } : {}),
+      }),
+    );
   }
   for (const creature of w.creatures) {
     const { count, ...block } = creature;
