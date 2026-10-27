@@ -2,9 +2,6 @@ import type { EncounterStatBlock } from '../shared/types.js';
 import { lookup } from '../srd/lookup.js';
 import { EncounterError } from './rules.js';
 
-/** Sizes the SRD data gets wrong (the 2024 Guard is Medium or Small; the data says only Small). */
-const SIZE_FIXES: Record<string, string> = { Guard: 'medium', 'Guard Captain': 'medium' };
-
 /** A monster's stat block from SRD 5.2, by its exact name, or null when the 2024 rules have no such monster. */
 export function srdStatBlock(name: string): EncounterStatBlock | null {
   const found = lookup('monster', name);
@@ -15,7 +12,7 @@ export function srdStatBlock(name: string): EncounterStatBlock | null {
     source: 'srd',
     cr: m.cr,
     ...(m.xp !== undefined ? { xp: m.xp } : {}),
-    size: SIZE_FIXES[m.name] ?? m.size,
+    size: m.size,
     type: m.type,
     ac: m.ac,
     hp: m.hp,

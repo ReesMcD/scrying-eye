@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { quickBattle, QUICK_MAPS, QUICK_MONSTERS } from '../src/encounter/quick.js';
 import { statBlock } from '../src/encounter/srdMonsters.js';
+import { sizeFromHitDice } from '../src/srd/lookup.js';
 import { newEncounter } from '../src/encounter/rules.js';
 import { applyAction } from '../src/encounter/rules.js';
 import { canPlace, footprint } from '../src/shared/battlemap.js';
@@ -45,6 +46,15 @@ test('every quick map builds, and every quick monster is in the 2024 rules', () 
   }
   assert.equal(statBlock('Guard').size, 'medium', 'the SRD data says Small; a 2024 Guard is Medium');
   assert.equal(statBlock('Hill Giant').size, 'huge');
+});
+
+test('every monster is the size its Hit Dice say (the SRD file lists Tiny ones and "Medium or Small" ones as Small)', () => {
+  for (const [name, size] of [['Bat', 'tiny'], ['Imp', 'tiny'], ['Pseudodragon', 'tiny'], ['Knight', 'medium'], ['Mage', 'medium'], ['Vampire', 'medium'], ['Werewolf', 'medium'], ['Goblin Warrior', 'small'], ['Owlbear', 'large'], ['Ancient Red Dragon', 'gargantuan']] as const)
+    assert.equal(statBlock(name).size, size, name);
+  assert.equal(sizeFromHitDice('3d4 + 3', 'small'), 'tiny');
+  assert.equal(sizeFromHitDice(undefined, 'large'), 'large', 'no Hit Dice: the listed size stands');
+  const s = quickBattle({ map: 'dungeon', party: [], monsters: [{ name: 'Bat', count: 1 }, { name: 'Knight', count: 1 }] }, 'e', 0);
+  assert.deepEqual(s.map!.tokens.map((t) => t.size), ['tiny', 'medium']);
 });
 
 test('a quick battle refuses an unknown map or monster, and an empty board', () => {

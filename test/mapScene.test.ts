@@ -142,3 +142,11 @@ test('a mini climbs onto a crate or a table and stands on top; a pillar has noth
   assert.equal(figureOf(scene, { id: 'a', size: 'medium' }, [3, 1]).y, 0, 'on the floor');
 });
 
+test('standees by size: Small stands as tall as Medium (its mini is drawn short already); Tiny and Small get smaller stands', () => {
+  const scene = buildScene({ v: 1, width: 6, height: 6, terrain: [], tokens: [], notes: [] });
+  const fig = (size: 'tiny' | 'small' | 'medium' | 'large') => figureOf(scene, { id: 'x', size }, [1, 1]);
+  assert.equal(fig('small').height, fig('medium').height);
+  assert.ok(fig('tiny').height < fig('small').height && fig('large').height > fig('medium').height);
+  assert.ok(fig('tiny').radius < fig('small').radius && fig('small').radius < fig('medium').radius && fig('medium').radius < fig('large').radius);
+  assert.deepEqual([fig('tiny').x, fig('tiny').z], [1.5, 1.5], 'centred in its square');
+});
