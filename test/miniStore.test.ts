@@ -189,7 +189,7 @@ test('the Minis page: the party from the roster, adding a monster, and a player 
   assert.equal((await call('/minis', 'POST', { name: 'Goblin' })).status, 400, 'needs a kind');
   const goblin = (await (await call('/minis', 'POST', { name: 'Goblin', kind: 'monster', mini: { ancestry: 'goblin' } })).json()) as MiniFigure;
   assert.deepEqual(goblin.mini, { ancestry: 'goblin' });
-  assert.equal((await call(`/minis/${goblin.id}`, 'PUT', { mini: { form: 'dragon' } })).status, 400);
+  assert.equal((await call(`/minis/${goblin.id}`, 'PUT', { mini: { form: 'tentacles' } })).status, 400);
   assert.equal((await call('/minis/nope', 'PUT', { mini: null })).status, 404);
 
   const noAddress = await call('/minis/pc-aria/link', 'POST');

@@ -9,9 +9,9 @@ export const OUTFITS = ['tunic', 'robe', 'leather', 'chain', 'plate', 'rags'] as
 export const HEADGEAR = ['none', 'hood', 'helm', 'great-helm', 'wizard-hat', 'circlet', 'crown'] as const;
 export const HAIR = ['none', 'short', 'long', 'braids', 'topknot', 'wild'] as const;
 export const BEARDS = ['none', 'short', 'long', 'forked'] as const;
-export const WEAPONS = ['none', 'sword', 'greatsword', 'axe', 'warhammer', 'mace', 'spear', 'staff', 'bow', 'crossbow', 'daggers', 'wand'] as const;
+export const WEAPONS = ['none', 'sword', 'greatsword', 'axe', 'warhammer', 'mace', 'club', 'spear', 'staff', 'bow', 'crossbow', 'daggers', 'wand'] as const;
 export const OFFHAND = ['none', 'shield', 'kite-shield', 'tome', 'torch', 'orb', 'lantern'] as const;
-export const FORMS = ['humanoid', 'beast'] as const;
+export const FORMS = ['humanoid', 'beast', 'dragon'] as const;
 
 export type Ancestry = (typeof ANCESTRIES)[number];
 export type Outfit = (typeof OUTFITS)[number];
@@ -26,7 +26,7 @@ export type Form = (typeof FORMS)[number];
 export type Colour = string;
 
 export interface MiniSpec {
-  /** `humanoid` (the default) or `beast` (four legs: wolves, bears, boars, big cats). */
+  /** `humanoid` (the default), `beast` (four legs: wolves, bears, boars, big cats) or `dragon` (wings and a tail). */
   form?: Form;
   ancestry?: Ancestry;
   /** Build within the ancestry. */
@@ -39,7 +39,7 @@ export interface MiniSpec {
   headgear?: Headgear;
   weapon?: Weapon;
   offhand?: Offhand;
-  /** Beasts: the coat colour and whether it has horns or tusks. */
+  /** Beasts' and dragons' colour (a dragon's scales). */
   coat?: Colour;
 }
 

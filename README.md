@@ -457,7 +457,7 @@ What's in it:
       tap, clues, and hints given out one at a time), treasure and exits.
     - **The party enters** reveals the room on the map. **Cleared**, **Looted** and **Solved** mark
       it.
-    - **Fight here** puts the room's creatures in the room and goes to initiative. **End fight**
+    - **Fight here** puts the room's creatures in the room and starts the turn order. **End fight**
       goes back to exploring: the fallen leave the map, and an emptied room is cleared.
     - **Prepared battles** (dnd-wiki #109): a room with a battle saved in the wiki (`wiki_battle`
       with `dungeon` and `room`) offers **Fight on its battle map**: the room's own map, with the
@@ -468,14 +468,18 @@ What's in it:
       other end on that plan. Each level keeps its own fog, and whoever stayed behind stays there.
     - What happens goes back to the wiki as it happens, and the whole run reaches the recap. This
       needs a wiki with the dungeons API (ReesMcD/dnd-wiki#106); until then the list says so.
-  - **Initiative:** monsters roll theirs, players type theirs (or send it from their phone), ties go
-    to Dexterity.
-  - **The tracker:** Next and Previous turn, damage and healing with temporary HP, the 2024
-    conditions (optionally for N rounds, counting down on the right turn), concentration with its
-    save DC, hiding and revealing, and each monster's stat block.
+  - **Quick battle:** pick **Basic dungeon** or **Basic forest**, the party (from Campaigns) and
+    monsters from the 2024 rules (Goblin Warrior, Guard, Hill Giant, Adult Red Dragon), and
+    **Set up the board** places everyone. **Add to the board** takes any other 2024 monster by
+    name, with its stat block.
+  - **The tracker is for moving pieces:** no initiative, HP or AC (players keep theirs on their
+    sheets; you run monsters however you like). Arrange the turn order with the arrows, **Start
+    round 1**, then **Next turn**; the round counts up as it loops, and the 3D map moves to whoever's
+    turn it is. Conditions stay as reminders (optionally for N rounds), with hiding and revealing,
+    and each monster's stat block to read.
   - **The battle map:** a wiki encounter's map (walls, doors, water, difficult ground, cover,
-    elevation, trees and the like), with a token per combatant: the current turn ringed, HP bars,
-    hidden ones faded. Drag a token to move it; it snaps to squares. **Doors** opens, closes and
+    elevation, trees and the like), with a token per combatant: the current turn ringed, hidden
+    ones faded. Drag a token to move it; it snaps to squares. **Doors** opens, closes and
     locks them; **Difficult** marks or clears squares; combatants without a token are placed with a
     tap. A blank encounter can get a blank grid. Pinch or scroll to zoom, drag the map to pan.
   - **The board helps; you rule.** Like picking up a piece at a real table, a token goes anywhere
@@ -491,7 +495,7 @@ What's in it:
       (the optional rule; use it or don't).
   - **3D:** the **2D / 3D** switch on the map (tracker and players' phones) shows the same map in
     3D: walls and doors with height, raised ground, cover, trees and pillars, water, and the
-    tokens as paper standees (painted cards in stands coloured by side, like paper minis) with their names and HP. The cards turn to face you and lie flat when you look straight down, so the top view reads like the 2D map. Drag to turn the camera, pinch or scroll to zoom,
+    tokens as paper standees (each creature's paper mini in a stand coloured by side) with their names. The cards turn to face you and lie flat when you look straight down, so the top view reads like the 2D map. Drag to turn the camera, pinch or scroll to zoom,
     two fingers or the right button to pan. You can drag tokens in 3D too, and the buttons look
     at whose turn it is, at your own character, straight down, or at the whole map. 2D stays the
     default, each device remembers its choice, spell areas are placed on the 2D map, and a
@@ -533,9 +537,8 @@ What's in it:
   install.
   - Each encounter has its own secret link (copy it from the tracker). Players pick their character
     once and the device remembers it.
-  - They see whose turn it is ("Your turn" buzzes the phone), the party's HP and conditions, and
-    whether monsters look healthy, bloodied or down.
-  - They change only their own character's HP, conditions and initiative, move their own token
+  - They see whose turn it is ("Your turn" buzzes the phone) and everyone's conditions.
+  - They set only their own character's conditions, move their own token
     or a friend's (never a monster's), roll dice for the table and place their own spell area (hidden monsters, the
     DM's map notes and anything under the fog never reach their phones).
   - To reach their phones it needs a public address: see **Settings → Encounters** (Tailscale Funnel).

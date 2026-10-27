@@ -18,6 +18,8 @@ export type {
   MiniKind,
   MiniSpec,
   PlayerMini,
+  QuickBattleOptions,
+  QuickBattleRequest,
   TurnSuggestion,
   WikiDungeon,
   WikiDungeonSummary,

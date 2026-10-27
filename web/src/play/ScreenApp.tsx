@@ -90,17 +90,9 @@ function Screen({ view }: { view: PlayerView }) {
 }
 
 function Turn({ c }: { c: PlayerCombatant }) {
-  const pct = c.hp !== null && c.maxHp ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : null;
   return (
-    <li className={`screen-chip ${c.kind}${c.current ? ' current' : ''}${c.health === 'down' || c.hp === 0 ? ' down' : ''}`}>
+    <li className={`screen-chip ${c.kind}${c.current ? ' current' : ''}`}>
       <span>{c.name}</span>
-      {pct !== null ? (
-        <span className={`hp-bar ${c.hp === 0 ? 'zero' : pct <= 25 ? 'bad' : pct <= 50 ? 'warn' : 'good'}`} aria-label={`${c.hp} of ${c.maxHp} HP`}>
-          <i style={{ width: `${pct}%` }} />
-        </span>
-      ) : (
-        c.health && c.health !== 'healthy' && <span className="muted small">{c.health === 'bloodied' ? 'Bloodied' : 'Down'}</span>
-      )}
     </li>
   );
 }

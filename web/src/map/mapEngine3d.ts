@@ -563,7 +563,7 @@ export class MapEngine3d {
       fig.turnRing.visible = !!ti?.current;
       fig.pickRing.visible = selected === t.id || !!ti?.mine;
       (fig.pickRing.material as THREE.MeshBasicMaterial).color.set(selected === t.id ? this.colors.text : this.colors.accent);
-      const tagKey = JSON.stringify([ti?.name ?? t.name, ti?.hp, ti?.maxHp, ti?.flanked, ti?.current && ti.moved, ti?.speed]);
+      const tagKey = JSON.stringify([ti?.name ?? t.name, ti?.flanked, ti?.current && ti.moved, ti?.speed]);
       if (tagKey !== fig.tagKey) {
         fig.tagKey = tagKey;
         this.paintTag(fig.tag, ti?.name ?? t.name, ti);
@@ -592,8 +592,10 @@ export class MapEngine3d {
     const texture = new THREE.CanvasTexture(mini.canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 4;
-    const height = f.height * 1.25 * mini.scale;
-    const width = (height * mini.canvas.width) / mini.canvas.height;
+    // Tall cards stand by height (a gnome shorter than a giant); wide ones (a dragon, a wolf) fill their base.
+    const aspect = mini.canvas.width / mini.canvas.height;
+    const height = aspect > 1 ? (f.radius * 2.8) / aspect : f.height * 1.25 * mini.scale;
+    const width = height * aspect;
     const card = new THREE.Mesh(
       new THREE.PlaneGeometry(width, height).translate(0, height / 2, 0),
       new THREE.MeshStandardMaterial({ map: texture, alphaTest: 0.5, roughness: 0.9, side: THREE.DoubleSide, transparent: faded, opacity: faded ? 0.45 : 1 }),
@@ -660,9 +662,8 @@ export class MapEngine3d {
     const aids = [ti?.flanked ? 'flanked' : '', ti?.current && ti.moved ? `${ti.moved} ft${ti.speed ? ` of ${ti.speed}` : ''}` : ''].filter(Boolean);
     const text = [short, ...aids].join(' · ');
     const width = Math.ceil(ctx.measureText(text).width) + 28;
-    const hasHp = ti?.hp != null && !!ti.maxHp;
     canvas.width = width;
-    canvas.height = hasHp ? 58 : 44;
+    canvas.height = 44;
     ctx.font = font;
     ctx.fillStyle = this.colors.surface;
     ctx.globalAlpha = 0.88;
@@ -673,19 +674,12 @@ export class MapEngine3d {
     ctx.fillStyle = this.colors.text;
     ctx.textBaseline = 'middle';
     ctx.fillText(text, 14, 23);
-    if (hasHp) {
-      const frac = Math.max(0, Math.min(1, ti!.hp! / ti!.maxHp!));
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(12, 44, width - 24, 7);
-      ctx.fillStyle = frac === 0 ? this.colors.muted : frac <= 0.25 ? this.colors.bad : frac <= 0.5 ? this.colors.warn : this.colors.good;
-      ctx.fillRect(12, 44, (width - 24) * frac, 7);
-    }
     const material = tag.material;
     material.map?.dispose();
     material.map = new THREE.CanvasTexture(canvas);
     material.map.colorSpace = THREE.SRGBColorSpace;
     material.needsUpdate = true;
-    const h = hasHp ? 0.034 : 0.026;
+    const h = 0.026;
     tag.scale.set((h * canvas.width) / canvas.height, h, 1);
   }
 

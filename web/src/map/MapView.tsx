@@ -17,9 +17,9 @@ function stored(): Mode {
 /**
  * The battle map, flat or in 3D (#53). 2D is the default for play; this device remembers the
  * choice. Placing a spell area happens on the flat map, and 3D falls back to it where WebGL
- * isn't available.
+ * isn't available. `follow`: in 3D, the camera goes to whoever's turn it is.
  */
-export function MapView(props: MapViewProps) {
+export function MapView(props: MapViewProps & { follow?: boolean }) {
   const [mode, setMode] = useState<Mode>(stored);
   const [unavailable, setUnavailable] = useState(false);
   const placingArea = !!props.onCornerDrag;

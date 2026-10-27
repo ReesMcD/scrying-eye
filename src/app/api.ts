@@ -315,6 +315,13 @@ export function createApi(opts: ApiOptions): Hono {
     '/',
     encounterRoutes(encounters, {
       wiki: wikiEncounters,
+      campaigns: () => {
+        const config = opts.configStore.read().config;
+        const party = (id: string | null) => Object.values(config?.characters ?? {}).filter((ch) => (ch.campaign ?? null) === id).map((ch) => ch.name);
+        const known = Object.entries(config?.campaigns ?? {}).map(([id, k]) => ({ id, name: k.name, party: party(id) }));
+        const loose = party(null);
+        return loose.length ? [...known, { id: '', name: 'No campaign', party: loose }] : known;
+      },
       dungeons: opts.wikiDungeons ?? wikiDungeonsFor(opts.dataDir, opts.configStore, opts.httpFetch),
       links: () => {
         const players = configSchema.parse(opts.configStore.read().config ?? {}).players;

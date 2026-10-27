@@ -2,7 +2,9 @@ import { Hono, type Context } from 'hono';
 import { EncounterError } from '../encounter/rules.js';
 import type { EncounterStore } from '../encounter/store.js';
 import { encounterFromWiki, WikiEncountersError, type WikiEncounters } from '../encounter/wiki.js';
-import type { EncounterAction } from '../shared/types.js';
+import type { EncounterAction, QuickBattleOptions, QuickBattleRequest } from '../shared/types.js';
+import { QUICK_MAPS, QUICK_MONSTERS, quickBattle, type QuickMap } from '../encounter/quick.js';
+import { statBlock } from '../encounter/srdMonsters.js';
 import type { BotControl } from '../bot/types.js';
 import { joinPost } from '../bot/encounterCommand.js';
 import { turnPrompt, type TurnAdvisor } from '../encounter/assistant.js';
@@ -16,7 +18,8 @@ import type { WikiDungeons } from '../encounter/dungeonWiki.js';
  *   GET  /encounters/dungeons[?campaign=]   dungeons in the wiki
  *   GET  /encounters/dungeons/:id           one, to preview
  *   GET  /encounter                          the one running, or null
- *   POST /encounter                          start: { wikiId, campaign? }, { dungeonId, campaign? } or { title }
+ *   GET  /encounters/quick                   quick battles: the maps, monsters and each campaign's party
+ *   POST /encounter                          start: { wikiId, campaign? }, { dungeonId, campaign? }, { quick } or { title }
  *   POST /encounter/actions                  one change (EncounterAction)
  *   POST /encounter/end                      end it; answers with the summary
  *   GET  /encounter/link                     the players' join link
@@ -45,6 +48,8 @@ export interface EncounterRouteDeps {
   doFetch?: typeof fetch;
   bot?: BotControl;
   advisor?: AdvisorSource;
+  /** Each campaign's party, from the roster (for quick battles). */
+  campaigns?: () => QuickBattleOptions['campaigns'];
 }
 
 export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps): Hono {
@@ -87,9 +92,27 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
   });
 
   r.get('/encounter', (c) => c.json(store.current()));
+  r.get('/encounters/quick', (c) => {
+    const options: QuickBattleOptions = {
+      maps: Object.entries(QUICK_MAPS).map(([id, m]) => ({ id, name: m.name })),
+      monsters: QUICK_MONSTERS.map((name) => {
+        const b = statBlock(name);
+        return { name: b.name, cr: b.cr ?? '', size: b.size ?? '', type: b.type ?? '' };
+      }),
+      campaigns: deps.campaigns?.() ?? [],
+    };
+    return c.json(options);
+  });
+
   r.post('/encounter', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { wikiId?: unknown; dungeonId?: unknown; campaign?: unknown; title?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { wikiId?: unknown; dungeonId?: unknown; campaign?: unknown; title?: unknown; quick?: QuickBattleRequest };
     try {
+      if (body.quick && typeof body.quick === 'object') {
+        const q = body.quick;
+        const names = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []);
+        const monsters = Array.isArray(q.monsters) ? q.monsters.filter((m) => m && typeof m.name === 'string' && typeof m.count === 'number') : [];
+        return c.json(store.start(quickBattle({ map: q.map as QuickMap, party: names(q.party), monsters, ...(typeof q.title === 'string' ? { title: q.title } : {}) }, store.newId(), Date.now())), 201);
+      }
       if (typeof body.dungeonId === 'string' && body.dungeonId) {
         const dungeon = await dungeons.get(body.dungeonId, typeof body.campaign === 'string' && body.campaign ? body.campaign : undefined);
         return c.json(store.start(encounterFromDungeon(dungeon, store.newId(), { now: Date.now, d20: () => 10 })), 201);
@@ -98,7 +121,7 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
         const prepared = await wiki.get(body.wikiId, typeof body.campaign === 'string' && body.campaign ? body.campaign : undefined);
         return c.json(store.start(encounterFromWiki(prepared, store.newId(), Date.now())), 201);
       }
-      if (typeof body.title !== 'string') return c.json({ error: 'Send wikiId (a prepared encounter), dungeonId (a dungeon) or title (a blank one)' }, 400);
+      if (typeof body.title !== 'string') return c.json({ error: 'Send wikiId (a prepared encounter), dungeonId (a dungeon), quick (a quick battle) or title (a blank one)' }, 400);
       return c.json(store.start({ title: body.title }), 201);
     } catch (err) {
       if (err instanceof EncounterError && /still running/.test(err.message)) return c.json({ error: err.message }, 409);

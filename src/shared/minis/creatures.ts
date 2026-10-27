@@ -14,6 +14,7 @@ export interface Creature {
 
 /** Names that say more than the type does, checked first. */
 const BY_NAME: Array<[RegExp, MiniSpec]> = [
+  [/\bgiant\b/i, { ancestry: 'human', build: 'broad', skin: 'skin-tan', hair: { style: 'wild', colour: 'hair-brown' }, outfit: { kind: 'rags', colour: 'tan', trim: 'brown' }, weapon: 'club' }],
   [/skeleton/i, { ancestry: 'skeleton', weapon: 'sword', offhand: 'shield', outfit: { kind: 'rags', colour: 'brown' } }],
   [/zombie|ghoul/i, { ancestry: 'human', skin: 'skin-grey-green', hair: { style: 'wild', colour: 'hair-grey' }, outfit: { kind: 'rags', colour: 'grey' } }],
   [/goblin|hobgoblin|bugbear/i, { ancestry: 'goblin', weapon: 'daggers', outfit: { kind: 'leather', colour: 'brown' }, hair: { style: 'none' } }],
@@ -36,7 +37,7 @@ const BY_TYPE: Record<string, MiniSpec> = {
   beast: { form: 'beast', coat: 'brown' },
   monstrosity: { form: 'beast', coat: 'charcoal' },
   fiend: { ancestry: 'tiefling', skin: 'skin-red', outfit: { kind: 'rags', colour: 'black' }, weapon: 'greatsword' },
-  dragon: { ancestry: 'dragonborn', skin: 'scales-red', outfit: { kind: 'plate', colour: 'maroon', trim: 'gold' }, weapon: 'greatsword' },
+  dragon: { form: 'dragon', coat: 'crimson' },
   giant: { ancestry: 'half-orc', skin: 'skin-tan', build: 'broad', outfit: { kind: 'rags', colour: 'tan' }, weapon: 'warhammer' },
   fey: { ancestry: 'elf', outfit: { kind: 'robe', colour: 'moss', trim: 'gold' }, headgear: 'circlet', weapon: 'wand' },
   celestial: { ancestry: 'human', outfit: { kind: 'robe', colour: 'white', trim: 'gold' }, headgear: 'circlet', weapon: 'mace' },
@@ -49,6 +50,13 @@ const BY_TYPE: Record<string, MiniSpec> = {
 
 /** How a token's name finds its mini: case and a trailing number ("Bandit 2") don't matter. */
 export const miniNameKey = (name: string) => name.trim().replace(/\s+\d+$/, '').toLowerCase();
+
+/** Chromatic and metallic dragons wear their colour; any other dragon is red. */
+const DRAGON_COLOURS: Array<[RegExp, string]> = [
+  [/\bred\b/i, 'crimson'], [/\bblue\b/i, 'navy'], [/\bgreen\b/i, 'forest'], [/\bblack\b/i, 'charcoal'], [/\bwhite\b/i, 'white'],
+  [/\bgold\b/i, 'gold'], [/\bsilver\b/i, 'silver'], [/\bbrass\b/i, 'ochre'], [/\bbronze\b/i, 'bronze'], [/\bcopper\b/i, 'rust'],
+];
+const dragonColour = (name: string) => DRAGON_COLOURS.find(([p]) => p.test(name))?.[1] ?? 'crimson';
 
 /** A stable number from a name, so the same creature always gets the same look. */
 function hash(text: string): number {
@@ -75,6 +83,8 @@ function variedFigure(name: string): MiniSpec {
  * Boss"), else its type's ("undead"), else a plain figure varied by its name.
  */
 export function miniForCreature(c: Creature): MiniSpec {
+  const wyrm = /\b(dragon|wyrm|wyrmling|drake)\b/i.exec(c.name);
+  if (wyrm && !/dragonborn/i.test(c.name)) return { form: 'dragon', coat: dragonColour(c.name) };
   for (const [pattern, spec] of BY_NAME) if (pattern.test(c.name)) return spec;
   const type = c.type?.toLowerCase().match(/[a-z]+/)?.[0];
   const byType = type ? BY_TYPE[type] : undefined;

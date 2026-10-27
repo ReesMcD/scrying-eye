@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import type { Combatant, CombatantKind, EncounterAction, EncounterState, TurnSuggestion } from '../../types';
 import { api } from '../../api';
 import { DicePanel } from '../../dice/DicePanel';
@@ -10,7 +10,7 @@ import { MapCard } from './MapCard';
 
 type Act = (action: EncounterAction) => Promise<void>;
 
-/** The DM's tracker: turn order, HP, conditions, and the controls to run the round. */
+/** The DM's tracker: the board, the turn order to click through, and the round. No HP, AC or initiative. */
 export function Tracker({ state, act, onEnd, assistant }: { state: EncounterState; act: Act; onEnd: () => Promise<void>; assistant: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -19,8 +19,6 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
   const running = state.status === 'running';
   const exploring = state.status === 'exploring';
   const fighting = !!state.dungeon?.fight;
-  const missing = state.combatants.filter((c) => c.initiative === null);
-  const checks = state.combatants.filter((c) => c.concentrationCheck !== null);
   const current = state.turn ? byId.get(state.turn) : undefined;
 
   return (
@@ -28,7 +26,7 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
       <div className="row spread tracker-head">
         <div>
           <h1>{state.title}</h1>
-          <div className="muted small">{exploring ? 'Exploring: move the party on the map; open a room for what’s there' : running ? `Round ${state.round} · ${current?.name ?? ''}’s turn` : 'Setting up: initiative first'}</div>
+          <div className="muted small">{exploring ? 'Exploring: move the party on the map; open a room for what’s there' : running ? `Round ${state.round} · ${current?.name ?? ''}’s turn` : 'Setting up: put them in turn order, then start'}</div>
         </div>
         <button className="danger" onClick={() => (confirmEnd ? void onEnd() : setConfirmEnd(true))} onBlur={() => setConfirmEnd(false)}>
           {confirmEnd ? 'Tap again to end' : state.dungeon ? 'Leave the dungeon' : 'End encounter'}
@@ -46,6 +44,9 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
         )}
         {running ? (
           <div className="row">
+            <span className="round-count tabular" aria-label={`Round ${state.round}`}>
+              Round {state.round}
+            </span>
             <button onClick={() => void act({ type: 'previous' })}>Previous</button>
             <button className="primary next-turn" onClick={() => void act({ type: 'next' })}>
               Next turn
@@ -53,13 +54,9 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
           </div>
         ) : (
           <div className="row">
-            <button onClick={() => void act({ type: 'rollInitiative' })} disabled={!state.combatants.some((c) => c.kind !== 'pc' && c.initiative === null)}>
-              Roll for monsters
-            </button>
-            <button className="primary" onClick={() => void act({ type: 'begin' })} disabled={!state.combatants.length || missing.length > 0}>
+            <button className="primary" onClick={() => void act({ type: 'begin' })} disabled={!state.combatants.length}>
               Start round 1
             </button>
-            {missing.length > 0 && <span className="muted small">Waiting on: {missing.map((c) => c.name).join(', ')}</span>}
           </div>
         )}
       </div>
@@ -68,20 +65,6 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
       {assistant && running && current && current.kind !== 'pc' && <TurnIdea key={`${state.round}-${current.id}`} combatant={current} />}
 
       <JoinPanel state={state} />
-
-      {checks.map((c) => (
-        <div key={c.id} className="card notice row spread" role="alert">
-          <span>
-            <strong>{c.name}</strong>: Constitution save, DC {c.concentrationCheck}, to keep {c.concentrating}.
-          </span>
-          <span className="row">
-            <button onClick={() => void act({ type: 'concentrationResult', id: c.id, kept: true })}>Kept it</button>
-            <button className="danger" onClick={() => void act({ type: 'concentrationResult', id: c.id, kept: false })}>
-              Lost it
-            </button>
-          </span>
-        </div>
-      ))}
 
       <MapCard
         state={state}
@@ -93,9 +76,23 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
       />
 
       <ol className="initiative" aria-label="Turn order">
-        {ordered.map((c) => (
-          <li key={c.id} id={`combatant-${c.id}`} className={`combatant ${c.id === state.turn ? 'current' : ''} ${c.hp === 0 ? 'down' : ''}`}>
-            <CombatantRow c={c} setup={!running} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} act={act} />
+        {ordered.map((c, i) => (
+          <li key={c.id} id={`combatant-${c.id}`} className={`combatant ${c.id === state.turn ? 'current' : ''}`}>
+            <CombatantRow
+              c={c}
+              place={i + 1}
+              open={open === c.id}
+              onToggle={() => setOpen(open === c.id ? null : c.id)}
+              onMove={(by) => {
+                const order = ordered.map((x) => x.id);
+                const j = i + by;
+                if (j < 0 || j >= order.length) return;
+                [order[i], order[j]] = [order[j]!, order[i]!];
+                void act({ type: 'reorder', order });
+              }}
+              first={i === 0}
+              last={i === ordered.length - 1}
+            />
             {open === c.id && <CombatantPanel c={c} state={state} act={act} />}
           </li>
         ))}
@@ -152,61 +149,19 @@ export function Tracker({ state, act, onEnd, assistant }: { state: EncounterStat
 
 const KIND_LABEL: Record<CombatantKind, string> = { pc: 'PC', monster: 'Monster', npc: 'NPC' };
 
-function hpTone(c: Combatant): string {
-  if (c.hp === null || c.maxHp === null || c.maxHp === 0) return '';
-  const left = c.hp / c.maxHp;
-  return c.hp === 0 ? 'zero' : left <= 0.25 ? 'bad' : left <= 0.5 ? 'warn' : 'good';
-}
-
-function CombatantRow({ c, setup, open, onToggle, act }: { c: Combatant; setup: boolean; open: boolean; onToggle: () => void; act: Act }) {
-  const [init, setInit] = useState(c.initiative === null ? '' : String(c.initiative));
-  useEffect(() => setInit(c.initiative === null ? '' : String(c.initiative)), [c.initiative]);
-  const commit = () => {
-    const value = init.trim() === '' ? null : Number(init);
-    if (value === c.initiative || (value !== null && !Number.isInteger(value))) return;
-    void act({ type: 'initiative', id: c.id, value });
-  };
-  const pct = c.hp !== null && c.maxHp ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : 0;
+/** One piece in the turn order: its place, name and reminders, and arrows to move it up or down. */
+function CombatantRow({ c, place, open, onToggle, onMove, first, last }: { c: Combatant; place: number; open: boolean; onToggle: () => void; onMove: (by: -1 | 1) => void; first: boolean; last: boolean }) {
   return (
     <div className="combatant-row">
-      {setup ? (
-        <input
-          className="init-input tabular"
-          inputMode="numeric"
-          aria-label={`${c.name}'s initiative`}
-          value={init}
-          placeholder="–"
-          onChange={(e) => setInit(e.target.value.replace(/[^\d-]/g, ''))}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-      ) : (
-        <span className="init tabular" aria-label="Initiative">
-          {c.initiative ?? '–'}
-        </span>
-      )}
+      <span className="init tabular" aria-hidden>
+        {place}
+      </span>
       <button type="button" className="combatant-main" aria-expanded={open} onClick={onToggle}>
         <span className="combatant-name">
           <span className={`kind-dot ${c.kind}`} aria-label={KIND_LABEL[c.kind]} />
           {c.name}
           {c.hidden && <Badge tone="warn">hidden</Badge>}
-          {c.concentrating && <Badge tone="accent">◎ {c.concentrating}</Badge>}
         </span>
-        <span className="combatant-stats tabular">
-          {c.ac !== null && <span>AC {c.ac}</span>}
-          {c.hp !== null && (
-            <span>
-              {c.hp}
-              {c.maxHp !== null && `/${c.maxHp}`}
-              {c.tempHp > 0 && <span className="temp-hp"> +{c.tempHp}</span>}
-            </span>
-          )}
-        </span>
-        {c.hp !== null && c.maxHp !== null && (
-          <span className={`hp-bar ${hpTone(c)}`} aria-hidden>
-            <i style={{ width: `${pct}%` }} />
-          </span>
-        )}
         {c.conditions.length > 0 && (
           <span className="condition-chips">
             {c.conditions.map((x) => (
@@ -219,25 +174,27 @@ function CombatantRow({ c, setup, open, onToggle, act }: { c: Combatant; setup: 
           </span>
         )}
       </button>
+      <span className="order-moves">
+        <button type="button" className="icon" aria-label={`Move ${c.name} earlier`} disabled={first} onClick={() => onMove(-1)}>
+          ↑
+        </button>
+        <button type="button" className="icon" aria-label={`Move ${c.name} later`} disabled={last} onClick={() => onMove(1)}>
+          ↓
+        </button>
+      </span>
     </div>
   );
 }
 
+/** Adds pieces: a name from the 2024 rules brings its stat block along. */
 function AddCombatant({ act }: { act: Act }) {
   const [name, setName] = useState('');
   const [count, setCount] = useState('1');
-  const [ac, setAc] = useState('');
-  const [hp, setHp] = useState('');
-  const [bonus, setBonus] = useState('');
   const [kind, setKind] = useState<CombatantKind>('monster');
-  const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    void act({
-      type: 'add',
-      combatant: { name: name.trim(), kind, count: num(count) ?? 1, ac: num(ac) ?? null, hp: num(hp) ?? null, ...(num(bonus) !== undefined ? { initiativeBonus: num(bonus) } : {}) },
-    }).then(() => {
+    void act({ type: 'add', combatant: { name: name.trim(), kind, count: Number(count) || 1 } }).then(() => {
       setName('');
       setCount('1');
     });
@@ -245,28 +202,21 @@ function AddCombatant({ act }: { act: Act }) {
   return (
     <details className="card">
       <summary>
-        <strong>Add a combatant</strong>
+        <strong>Add to the board</strong>
       </summary>
       <form onSubmit={submit} className="add-combatant">
         <label>
           <span className="field-label">Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wolf" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Goblin Warrior" list="srd-monsters" />
+          <datalist id="srd-monsters">
+            {['Goblin Warrior', 'Goblin Boss', 'Guard', 'Guard Captain', 'Bandit', 'Wolf', 'Skeleton', 'Zombie', 'Ogre', 'Hill Giant', 'Adult Red Dragon'].map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </label>
         <label>
           <span className="field-label">How many</span>
           <input inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ''))} />
-        </label>
-        <label>
-          <span className="field-label">AC</span>
-          <input inputMode="numeric" value={ac} onChange={(e) => setAc(e.target.value.replace(/\D/g, ''))} />
-        </label>
-        <label>
-          <span className="field-label">HP</span>
-          <input inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value.replace(/\D/g, ''))} />
-        </label>
-        <label>
-          <span className="field-label">Init. bonus</span>
-          <input inputMode="numeric" value={bonus} onChange={(e) => setBonus(e.target.value.replace(/[^\d-]/g, ''))} />
         </label>
         <label>
           <span className="field-label">Side</span>
@@ -280,6 +230,7 @@ function AddCombatant({ act }: { act: Act }) {
           Add
         </button>
       </form>
+      <p className="muted small">Any monster from the 2024 rules brings its stat block; place it on the map from the list.</p>
     </details>
   );
 }

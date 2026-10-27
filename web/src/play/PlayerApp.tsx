@@ -189,8 +189,6 @@ function MiniStep({ view, onSaved, onClose }: { view: PlayerView; onSaved: (view
   );
 }
 
-const HEALTH_LABEL = { healthy: 'Healthy', bloodied: 'Bloodied', down: 'Down' } as const;
-
 function Fight({ view, act, onMini }: { view: PlayerView; act: (r: Parameters<typeof play.act>[0]) => Promise<void>; onMini: () => void }) {
   const me = view.order.find((c) => c.id === view.me) ?? null;
   const myTurn = !!view.me && view.turn === view.me;
@@ -219,8 +217,7 @@ function Fight({ view, act, onMini }: { view: PlayerView; act: (r: Parameters<ty
       ) : (
         view.status === 'running' && <p className="muted">{current ? `${current.name}’s turn` : 'Someone is taking their turn…'}</p>
       )}
-      {view.me && view.status === 'setup' && view.myInitiative === null && <InitiativePrompt act={act} />}
-      {me && <MyCard me={me} ac={view.myAc} initiative={view.myInitiative} act={act} />}
+      {me && <MyCard me={me} act={act} />}
       {view.map && <PlayerMap view={view} act={act} />}
       {me ? (
         <DicePanel rolls={view.rolls} onRoll={(expression, label) => act({ type: 'roll', expression, ...(label ? { label } : {}) })} />
@@ -288,82 +285,23 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
   );
 }
 
-function InitiativePrompt({ act }: { act: (r: { type: 'initiative'; value: number }) => Promise<void> }) {
-  const [value, setValue] = useState('');
-  const n = Number(value);
-  return (
-    <form
-      className="card initiative-prompt"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (value.trim() && Number.isInteger(n)) void act({ type: 'initiative', value: n });
-      }}
-    >
-      <label htmlFor="init" className="field-label">
-        Roll initiative: what did you get?
-      </label>
-      <div className="row">
-        <input id="init" inputMode="numeric" autoFocus value={value} placeholder="e.g. 17" onChange={(e) => setValue(e.target.value.replace(/[^\d-]/g, ''))} style={{ flex: 1 }} />
-        <button className="primary" disabled={!value.trim()}>
-          Send
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function MyCard({ me, ac, initiative, act }: { me: PlayerCombatant; ac: number | null; initiative: number | null; act: (r: Parameters<typeof play.act>[0]) => Promise<void> }) {
-  const [amount, setAmount] = useState('');
+/** My character: just reminders (conditions) I can set myself. HP and AC stay on my sheet. */
+function MyCard({ me, act }: { me: PlayerCombatant; act: (r: Parameters<typeof play.act>[0]) => Promise<void> }) {
   const [condition, setCondition] = useState<ConditionName>('Prone');
-  const n = Number(amount);
-  const valid = amount.trim() !== '' && Number.isInteger(n) && n >= 0;
-  const pct = me.hp !== null && me.maxHp ? Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100)) : 0;
-  const send = (type: 'damage' | 'heal' | 'tempHp') => void act({ type, amount: n }).then(() => setAmount(''));
   return (
     <section className="card my-card" aria-label="Your character">
-      <div className="row spread">
-        <strong className="my-name">{me.name}</strong>
-        <span className="row muted small">
-          {ac !== null && <span>AC {ac}</span>}
-          {initiative !== null && <span>Init {initiative}</span>}
-        </span>
-      </div>
-      {me.hp !== null && (
-        <>
-          <div className="my-hp tabular">
-            {me.hp}
-            {me.maxHp !== null && <span className="muted"> / {me.maxHp}</span>}
-            {me.tempHp > 0 && <span className="temp-hp"> +{me.tempHp} temp</span>}
-          </div>
-          <div className={`hp-bar ${me.hp === 0 ? 'zero' : pct <= 25 ? 'bad' : pct <= 50 ? 'warn' : 'good'}`} aria-hidden>
-            <i style={{ width: `${pct}%` }} />
-          </div>
-        </>
+      <strong className="my-name">{me.name}</strong>
+      {me.conditions.length > 0 && (
+        <div className="chips">
+          {me.conditions.map((x) => (
+            <button key={x.name} className="chip" aria-label={`Remove ${x.name}`} onClick={() => void act({ type: 'condition', name: x.name, remove: true })}>
+              {x.name}
+              {x.level ? ` ${x.level}` : ''}
+              {x.rounds ? ` · ${x.rounds}r` : ''} ✕
+            </button>
+          ))}
+        </div>
       )}
-      <div className="row">
-        <label htmlFor="amount" className="visually-hidden">
-          Amount
-        </label>
-        <input id="amount" className="amount" inputMode="numeric" value={amount} placeholder="Amount" onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
-        <button className="danger" disabled={!valid} onClick={() => send('damage')}>
-          Took damage
-        </button>
-        <button disabled={!valid} onClick={() => send('heal')}>
-          Healed
-        </button>
-        <button disabled={!valid} onClick={() => send('tempHp')}>
-          Temp HP
-        </button>
-      </div>
-      <div className="chips">
-        {me.conditions.map((x) => (
-          <button key={x.name} className="chip" aria-label={`Remove ${x.name}`} onClick={() => void act({ type: 'condition', name: x.name, remove: true })}>
-            {x.name}
-            {x.level ? ` ${x.level}` : ''}
-            {x.rounds ? ` · ${x.rounds}r` : ''} ✕
-          </button>
-        ))}
-      </div>
       <div className="row">
         <label htmlFor="cond" className="visually-hidden">
           Condition
@@ -373,30 +311,21 @@ function MyCard({ me, ac, initiative, act }: { me: PlayerCombatant; ac: number |
             <option key={c}>{c}</option>
           ))}
         </select>
-        <button onClick={() => void act({ type: 'condition', name: condition })}>Add</button>
+        <button onClick={() => void act({ type: 'condition', name: condition })}>Add condition</button>
       </div>
-      {me.concentrating && <p className="small muted">Concentrating on {me.concentrating}</p>}
     </section>
   );
 }
 
 function OrderRow({ c, you }: { c: PlayerCombatant; you: boolean }) {
-  const pct = c.hp !== null && c.maxHp ? Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100)) : 0;
   return (
-    <li className={`play-row ${c.current ? 'current' : ''} ${c.health === 'down' || c.hp === 0 ? 'down' : ''}`}>
+    <li className={`play-row ${c.current ? 'current' : ''}`}>
       <span className={`kind-dot ${c.kind}`} aria-hidden />
       <span className="play-row-main">
         <span className="play-row-name">
           {c.name}
           {you && <span className="badge accent">you</span>}
         </span>
-        {c.hp !== null && c.maxHp !== null ? (
-          <span className={`hp-bar ${c.hp === 0 ? 'zero' : pct <= 25 ? 'bad' : pct <= 50 ? 'warn' : 'good'}`} aria-label={`${c.hp} of ${c.maxHp} HP`}>
-            <i style={{ width: `${pct}%` }} />
-          </span>
-        ) : (
-          c.health && <span className={`badge ${c.health === 'healthy' ? '' : c.health === 'bloodied' ? 'warn' : 'bad'}`}>{HEALTH_LABEL[c.health]}</span>
-        )}
         {c.conditions.length > 0 && <span className="muted small">{c.conditions.map((x) => x.name).join(', ')}</span>}
       </span>
     </li>

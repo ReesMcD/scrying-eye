@@ -1,4 +1,5 @@
-import { blankMap, cellsOf, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken } from '../shared/battlemap.js';
+import { srdStatBlock } from './srdMonsters.js';
+import { blankMap, cellsOf, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken, type TokenSize } from '../shared/battlemap.js';
 import { pathFeet } from '../shared/tableAids.js';
 import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
@@ -91,6 +92,15 @@ export function sortOrder(combatants: readonly Combatant[]): string[] {
     .map((c) => c.id);
 }
 
+const TOKEN_SIZES: readonly TokenSize[] = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+
+/** A combatant's size on the map: its token's, else its stat block's (a dragon covers 3 × 3), else medium. */
+function sizeOf(s: EncounterState, c: Combatant): TokenSize {
+  const onMap = c.tokenId ? s.map?.tokens.find((t) => t.id === c.tokenId)?.size : undefined;
+  const block = c.ref ? s.statBlocks[c.ref]?.size?.toLowerCase() : undefined;
+  return onMap ?? (TOKEN_SIZES.find((x) => x === block) ?? 'medium');
+}
+
 /** A unique id from a name: "Goblin 2" → "goblin-2", with -2, -3… when taken. */
 export function combatantId(name: string, taken: ReadonlySet<string>): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'combatant';
@@ -115,15 +125,16 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       const count = action.combatant.count ?? 1;
       if (!Number.isInteger(count) || count < 1 || count > 30) throw new EncounterError('Add 1 to 30 at a time');
       const taken = new Set(s.combatants.map((c) => c.id));
+      // A monster from the 2024 rules brings its stat block, for the DM to read.
+      const block = action.combatant.kind !== 'pc' && !action.combatant.ref ? srdStatBlock(action.combatant.name) : null;
+      if (block) s.statBlocks[block.name] = block;
       for (let i = 1; i <= count; i++) {
         const name = count > 1 ? `${action.combatant.name.trim()} ${i}` : action.combatant.name;
-        const c = makeCombatant(combatantId(name, taken), { ...action.combatant, name });
+        const c = makeCombatant(combatantId(name, taken), { ...action.combatant, name, ...(block ? { ref: block.name } : {}) });
         taken.add(c.id);
         s.combatants.push(c);
-        if (s.status === 'running') {
-          // Joins at the end of the round until it has an initiative.
-          s.order.push(c.id);
-        }
+        // The turn order is the order they're added in, until the DM moves them (or initiative sorts it).
+        s.order.push(c.id);
       }
       break;
     }
@@ -176,8 +187,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
     case 'begin': {
       if (s.status !== 'setup') throw new EncounterError('Already running');
       if (!s.combatants.length) throw new EncounterError('Add combatants first');
-      const missing = s.combatants.filter((c) => c.initiative === null).map((c) => c.name);
-      if (missing.length) throw new EncounterError(`Still waiting on initiative: ${missing.join(', ')}`);
+      // No initiative needed: the turn order is as the DM arranged it.
       if (s.order.length !== s.combatants.length) s.order = sortOrder(s.combatants);
       s.status = 'running';
       s.moved = {};
@@ -288,7 +298,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
     case 'place': {
       const c = find(action.id);
       const tokenId = c.tokenId ?? uniqueTokenId(s.map, c.id);
-      s.map = onMap(s, (m) => placeToken(m, { id: tokenId, name: c.name, kind: c.kind, size: 'medium', ...(c.hidden ? { hidden: true } : {}) }, action.at));
+      s.map = onMap(s, (m) => placeToken(m, { id: tokenId, name: c.name, kind: c.kind, size: sizeOf(s, c), ...(c.hidden ? { hidden: true } : {}) }, action.at));
       c.tokenId = tokenId;
       break;
     }

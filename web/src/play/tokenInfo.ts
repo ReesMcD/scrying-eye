@@ -2,7 +2,7 @@ import type { PlayerView } from '../../../src/shared/types';
 import { flankedTokens, flankPieces } from '../../../src/shared/tableAids';
 import type { TokenInfo } from '../map/BattleMapView';
 
-/** What players' maps show on each visible token: names, the party's HP, and in a fight the table aids. */
+/** What players' maps show on each visible token: names, whose turn it is, and in a fight the table aids. */
 export function playerTokenInfo(view: PlayerView): Record<string, TokenInfo> {
   const map = view.map;
   const fighting = view.status === 'running';
@@ -15,8 +15,6 @@ export function playerTokenInfo(view: PlayerView): Record<string, TokenInfo> {
     info[token] = {
       name: c.name,
       current: c.current,
-      hp: c.hp,
-      maxHp: c.maxHp,
       mine: c.id === view.me,
       speed: c.speed ?? null,
       ...(fighting ? { moved: view.moved[token] ?? 0, flanked: flanked.has(token) } : {}),
