@@ -10,7 +10,7 @@ import { kitPlan } from '../../../src/shared/kitPlan';
 import { buildKit, kitModels, loadKit } from './kit';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
-import { initials, label, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, picture, type Palette } from './paint';
+import { label, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, picture, type Palette } from './paint';
 
 /**
  * The 3D battle map (#53), drawn with three.js. The floor is the 2D map painted from above (ground,
@@ -52,7 +52,12 @@ interface FigureMeshes {
   tag: THREE.Sprite;
   tagKey: string;
   shape: string;
+  /** The light a party member carries in a dark or dim place. */
+  light?: THREE.PointLight;
 }
+
+/** At most this many party members light their surroundings; the rest of the party walks in their light. */
+const MAX_PARTY_LIGHTS = 6;
 
 export class MapEngine3d {
   private readonly renderer: THREE.WebGLRenderer;
@@ -166,7 +171,10 @@ export class MapEngine3d {
     this.controls.maxDistance = Math.max(m.width, m.height) * 3 + 20;
     const area = this.viewArea(m);
     const centre = new THREE.Vector3(area.x + area.w / 2, 0, area.z + area.d / 2);
-    this.moveCamera(centre, centre.clone().add(new THREE.Vector3(0, 1.05, 0.72).setLength(this.fitDistance(area.w, area.d))));
+    // A tall, narrow screen (a phone held upright) looks down more steeply: the board fills it
+    // instead of a strip of map under empty sky.
+    const steep = this.camera.aspect < 0.85;
+    this.moveCamera(centre, centre.clone().add(new THREE.Vector3(0, steep ? 1.6 : 1.05, steep ? 0.55 : 0.72).setLength(this.fitDistance(area.w, steep ? area.d * 0.62 : area.d))));
   }
 
   /** What's worth framing: the whole map, or for players under fog, what they've seen of it. */
@@ -244,7 +252,8 @@ export class MapEngine3d {
       loadKit().then(
         () => {
           if (this.disposed) return;
-          this.builtKey = '';
+          // Rebuild with the models, keeping the camera where it is (not a first look).
+          this.builtKey = 'models-loaded';
           this.update();
         },
         () => undefined,
@@ -591,6 +600,7 @@ export class MapEngine3d {
       const at = this.drag?.token.id === t.id && this.drag.moved ? this.drag.to : shownAt(t, this.pending, now);
       const f = figureOf(this.model, t, at);
       fig.group.position.set(f.x, f.y, f.z);
+      this.carryLight(fig, t);
       fig.turnRing.visible = !!ti?.current;
       fig.pickRing.visible = selected === t.id || !!ti?.mine;
       (fig.pickRing.material as THREE.MeshBasicMaterial).color.set(selected === t.id ? this.colors.text : this.colors.accent);
@@ -668,6 +678,25 @@ export class MapEngine3d {
   }
 
   /**
+   * In a dark or dim place the party carries light (a torch's 20 ft bright, 20 more dim), so they
+   * and what's near them stay readable; monsters out in the dark stay dark.
+   */
+  private carryLight(fig: FigureMeshes, t: MapToken): void {
+    const lighting = this.model?.lighting ?? 'bright';
+    const wants = t.kind === 'pc' && lighting !== 'bright';
+    if (!wants && fig.light) {
+      fig.group.remove(fig.light);
+      fig.light.dispose();
+      delete fig.light;
+    } else if (wants && !fig.light && [...this.figures.values()].filter((f) => f.light).length < MAX_PARTY_LIGHTS) {
+      fig.light = new THREE.PointLight(0xffc98a, 1, 8, 1.4);
+      fig.light.position.y = 1.4;
+      fig.group.add(fig.light);
+    }
+    if (fig.light) fig.light.intensity = lighting === 'dark' ? 6 : 3;
+  }
+
+  /**
    * Pop-up standees: every card turns the way the camera looks, and leans back as it looks down,
    * so from above they lie flat and read like the 2D map.
    */
@@ -688,7 +717,7 @@ export class MapEngine3d {
     const ctx = canvas.getContext('2d')!;
     const font = '600 30px system-ui, sans-serif';
     ctx.font = font;
-    const short = name.length > 18 ? `${initials(name)} · ${name.slice(0, 14)}…` : name;
+    const short = name.length > 20 ? `${name.slice(0, 18).trimEnd()}…` : name;
     // Table aids: flanked, and how far whoever's turn it is has moved.
     const aids = [ti?.flanked ? 'flanked' : '', ti?.current && ti.moved ? `${ti.moved} ft${ti.speed ? ` of ${ti.speed}` : ''}` : ''].filter(Boolean);
     const text = [short, ...aids].join(' · ');
@@ -861,9 +890,13 @@ export class MapEngine3d {
     const { info, selected, map } = this.props();
     const kind = new Map(map.tokens.map((t) => [t.id, t.kind]));
     const wanted = [...this.figures].filter(([id]) => roomy || !!info[id]?.current || !!info[id]?.mine || selected === id);
-    for (const [, fig] of this.figures) fig.tag.visible = false;
-    // Tags that would overlap on screen take turns: whose turn it is, then the selected, mine and the
-    // party; the rest show when there's room (zoom in, or turn the camera).
+    for (const [, fig] of this.figures) {
+      fig.tag.visible = false;
+      fig.tag.center.y = 0;
+    }
+    // Tags that would overlap on screen stack up over each other (a step or two); past that they
+    // take turns: whose turn it is, then the selected, mine and the party; the rest show when
+    // there's room (zoom in, or turn the camera).
     const rank = (id: string) => (info[id]?.current ? 0 : selected === id ? 1 : info[id]?.mine ? 2 : kind.get(id) === 'pc' ? 3 : 4);
     wanted.sort(([a], [b]) => rank(a) - rank(b));
     const placed: Array<{ left: number; right: number; top: number; bottom: number }> = [];
@@ -877,9 +910,18 @@ export class MapEngine3d {
       const width = fig.tag.scale.x * pxPerUnit;
       const x = ((at.x + 1) / 2) * w;
       const bottom = ((1 - at.y) / 2) * h;
-      const box = { left: x - width / 2, right: x + width / 2, top: bottom - height, bottom };
-      if (placed.some((p) => box.left < p.right + 2 && box.right > p.left - 2 && box.top < p.bottom + 1 && box.bottom > p.top - 1)) continue;
+      const clash = (b: { left: number; right: number; top: number; bottom: number }) => placed.some((p) => b.left < p.right + 3 && b.right > p.left - 3 && b.top < p.bottom + 2 && b.bottom > p.top - 2);
+      let lift = 0;
+      let box = { left: x - width / 2, right: x + width / 2, top: bottom - height, bottom };
+      while (clash(box) && lift < 2) {
+        lift++;
+        const up = lift * (height + 4);
+        box = { left: x - width / 2, right: x + width / 2, top: bottom - height - up, bottom: bottom - up };
+      }
+      if (clash(box)) continue;
       placed.push(box);
+      // The sprite's anchor, in its own heights: raising it lifts the tag on screen.
+      fig.tag.center.y = -(lift * (height + 4)) / height;
       fig.tag.visible = true;
     }
   }

@@ -21,7 +21,8 @@
 .play-row-main > .badge { align-self: flex-start; }
 
 /* The screen view (?screen): the map fills the window, shared on Discord. */
-.screen { position: fixed; inset: 0; background: var(--bg); }
+/* The screen view is shared on Discord: always a dark table, whatever the theme, with a vignette. */
+.screen { position: fixed; inset: 0; background: radial-gradient(ellipse at center, #2a2620 0%, #14120f 75%); }
 .screen > .battle-map { height: 100%; border: 0; border-radius: 0; }
 .screen-empty { display: grid; place-items: center; height: 100%; font-size: 1.4rem; }
 .screen-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
