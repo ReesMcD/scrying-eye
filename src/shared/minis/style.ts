@@ -1,4 +1,4 @@
-import type { Ancestry, Features, Mini, MiniSpec } from './spec.js';
+import { BODIES, type Ancestry, type Features, type Mini, type MiniSpec } from './spec.js';
 
 /**
  * What every art style shares (docs/minis-style-guide.md says why): the named colours a mini is
@@ -103,8 +103,14 @@ export function resolveMini(spec: MiniSpec): Mini {
   const ancestry = spec.ancestry ?? 'human';
   const d = ANCESTRY_DEFAULTS[ancestry];
   const scaly = ancestry === 'dragonborn' || ancestry === 'skeleton';
+  const form = spec.form ?? 'humanoid';
   return {
-    form: spec.form ?? 'humanoid',
+    form,
+    body: spec.body ?? BODIES[form][0],
+    heads: spec.heads ?? 1,
+    head: spec.head ?? 'own',
+    lower: spec.lower ?? 'legs',
+    arms: spec.arms ?? 2,
     ancestry,
     build: spec.build ?? d.build ?? 'average',
     skin: colour(spec.skin, d.skin ?? PALETTE['skin-light']!),
@@ -141,6 +147,7 @@ function resolveFeatures(spec: MiniSpec, ancestry: Ancestry, skin: string): Feat
     glow: f.glow ?? born.glow ?? false,
     markings: f.markings ?? born.markings ?? 'none',
     markingColour: colour(f.markingColour, darken(skin, 0.3)),
+    flames: f.flames ?? false,
   };
 }
 

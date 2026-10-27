@@ -88,11 +88,32 @@ A mini has to read at 40 pixels. Before adding a part, check the silhouette:
 
 ## Monsters
 
-A creature with no mini of its own gets one from its stat block (`miniForCreature`): its name
-first (“Goblin Boss” → goblin, “Dire Wolf” → beast), then its type (undead → skeleton, fiend →
-horned figure…). It's a placeholder in the house style; give important monsters their own on the Minis page.
+Every monster in the 2024 rules (all 331 in SRD 5.2) has its own figure in the **bestiary**
+(`src/shared/minis/bestiary.ts`), by name: a minotaur is a bull-headed figure with an axe, an owlbear
+a bear with an owl's head, a hydra five necks. A creature the rules don't list falls back to
+`miniForCreature`: its name ("Goblin Boss"), then its type (undead → skeleton). A mini the DM saves
+on the Minis page always wins.
 
-Four-legged animals use the `beast` form: drawn side-on, the same ink and paper.
+A figure is built from **forms**, each with its kinds of **body** (`BODIES`):
+
+| Form | Bodies | Drawn |
+|---|---|---|
+| humanoid | (ancestry) | Front on. Can have an animal's `head` (bull, hyena, owl, fish…), a `lower` body (snake, fish tail, horse, spider, wisp, goat legs, lion, talons), 4 or 6 `arms`, 2 `heads`, fur or bare skin. |
+| beast | canine, feline, lion, bear, boar, horse, deer, goat, ox, camel, rhino, elephant, hippo, lizard, crocodile, rodent, badger, frog, turtle, raptor, triceratops, ankylosaurus | Side on, facing right. Can wear another `head` (a griffon's eagle, a sphinx's human face), wings, horns, flames, stripes or spots, extra heads. |
+| dragon | dragon, wyvern, turtle, hydra | Side on. Each colour has its horns (a blue's nose horn, a black's forward horns, a red's crest). |
+| bird | raptor, owl, raven, vulture, flightless, bat, pteranodon, stirge, cockatrice | Perched side on; fliers face on, on a post. |
+| serpent | snake, cobra, winged, worm, segmented | Coiled with the head raised; a worm bursting from the ground. |
+| arthropod | spider, scorpion, crab, centipede, beetle, wasp, fly, ankheg | Thin legs as outlined strands. |
+| fish | shark, whale, piranha, seahorse, plesiosaur, octopus, aboleth | Rising out of a band of water. |
+| blob | ooze, cube, mouther, otyugh, roper, xorn, cloak, eye | |
+| elemental | air, fire, water, wisp | |
+| swarm | bats, insects, piranhas, rats, ravens, snakes, claws | A cloud of small shapes. |
+| plant | tree, shrub, mound, mushroom | |
+| object | sword, chest, rug | |
+
+- **Fliers** float on a paper post down to the stand, so the cut-out stays one piece.
+- **Giant animals** share their animal's figure; the board draws them bigger by size.
+- **Coat** is the colour of a beast, a dragon's scales, fur, or a lower body.
 
 ## Adding a part
 

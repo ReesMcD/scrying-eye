@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BEARDS, colour, EARS, HAIR, HEADGEAR, HORNS, MARKINGS, OFFHAND, OUTFITS, renderMini, resolveMini, SPECIES, SPECIES_LOOKS, STARTER_MINIS, TAILS, TUSKS, WEAPONS, WINGS, miniForCreature, withLook, type FeatureSpec, type Features, type Mini, type MiniSpec } from '../../../src/shared/minis';
+import { BEARDS, BODIES, colour, EARS, FORMS, HEADS, LOWERS, HAIR, HEADGEAR, HORNS, MARKINGS, OFFHAND, OUTFITS, renderMini, resolveMini, SPECIES, SPECIES_LOOKS, STARTER_MINIS, TAILS, TUSKS, WEAPONS, WINGS, miniForCreature, withLook, type FeatureSpec, type Features, type Mini, type MiniSpec } from '../../../src/shared/minis';
 import './minis.css';
 
 /**
@@ -56,6 +56,17 @@ const FEATURES: Group[] = [
   onOff('Glowing eyes', 'glow'),
   chipsOf('Markings', 'markings', MARKINGS),
   { kind: 'swatches', title: 'Marking colour', values: MARKS, get: (m) => m.features.markingColour, set: (s, v) => feature(s, 'markingColour', v!) },
+];
+
+/** The DM's monster parts: what kind of creature, its body, colour, head and lower half. */
+const CREATURE: Group[] = [
+  { kind: 'chips', title: 'Form', values: FORMS, get: (m) => m.form, set: ({ body: _b, ...s }, v) => ({ ...s, form: v as Mini['form'] }) },
+  { kind: 'chips', title: 'Body', values: [], get: (m) => m.body, set: (s, v) => ({ ...s, body: v as Mini['body'] }) },
+  { kind: 'swatches', title: 'Coat', values: CLOTH, get: (m) => m.coat, set: (s, v) => ({ ...s, coat: v! }) },
+  { kind: 'chips', title: 'Head', values: HEADS, get: (m) => m.head, set: (s, v) => ({ ...s, head: v as Mini['head'] }) },
+  { kind: 'chips', title: 'Lower body', values: LOWERS, get: (m) => m.lower, set: (s, v) => ({ ...s, lower: v as Mini['lower'] }) },
+  { kind: 'chips', title: 'Arms', values: ['2', '4', '6'], get: (m) => String(m.arms), set: (s, v) => ({ ...s, arms: Number(v) as Mini['arms'] }) },
+  { kind: 'chips', title: 'Heads', values: ['1', '2', '3', '5'], get: (m) => String(m.heads), set: (s, v) => ({ ...s, heads: Number(v) }) },
 ];
 
 const GEAR: Group[] = [
@@ -204,6 +215,10 @@ export function MiniBuilder({ name, value, onSave }: { name: string; value: Mini
           {FEATURES.map(group)}
         </details>
         {GEAR.map(group)}
+        <details className="mini-more">
+          <summary>Monster parts</summary>
+          {CREATURE.map((g) => (g.title === 'Body' ? group({ ...g, values: BODIES[resolved.form] }) : group(g)))}
+        </details>
       </div>
     </div>
   );
