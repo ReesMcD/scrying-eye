@@ -6,8 +6,8 @@ import type { EncounterState, FunnelStatus, JoinLink } from '../../types';
 
 /**
  * The players' link for this encounter: copy it, replace it, and who has joined. It only hands out
- * a link that works for everyone: until Tailscale Funnel makes the players' page public, it says
- * what's missing and turns Funnel on with one button.
+ * a link that works for everyone. The app makes the link public by itself (Tailscale Funnel); until
+ * it's ready this says so and checks again, and shows Tailscale's one-time "allow" page if asked.
  */
 export function JoinPanel({ state }: { state: EncounterState }) {
   const [link, setLink] = useState<JoinLink | null>(null);
@@ -17,16 +17,33 @@ export function JoinPanel({ state }: { state: EncounterState }) {
   const [confirmNew, setConfirmNew] = useState(false);
   const code = state.join?.code;
   const loadLink = () => api<JoinLink>('/encounter/link').then(setLink, (e: Error) => setNote(e.message));
-  useEffect(() => {
-    void loadLink();
-    // Funnel's state also saves its address when it's on, so load the link again after.
+  const checkFunnel = () =>
     api<FunnelStatus>('/players/funnel').then(
       (f) => {
         setFunnel(f);
+        // Funnel's check saves the address when it's on: load the link again.
         if (f.on) void loadLink();
+        return f;
       },
-      () => setFunnel(null),
+      () => {
+        setFunnel(null);
+        return null;
+      },
     );
+  useEffect(() => {
+    void loadLink();
+    // Not public yet: keep checking (the app is turning Funnel on, or waiting for Tailscale's OK).
+    let stop = false;
+    let timer = 0;
+    const tick = async () => {
+      const f = await checkFunnel();
+      if (!stop && f && !f.on && f.problem !== 'no-tailscale') timer = window.setTimeout(() => void tick(), 8000);
+    };
+    void tick();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
   }, [code]);
   const makePublic = async () => {
     setTurningOn(true);
@@ -92,21 +109,19 @@ export function JoinPanel({ state }: { state: EncounterState }) {
       {!shown && (
         <div className="join-blocked">
           <p className="small" style={{ margin: 0 }}>
-            <strong>Players can’t open a link yet.</strong> {funnel && !funnel.on ? funnel.message : 'It needs a public address (Tailscale Funnel).'}
+            <strong>Getting the link ready…</strong>{' '}
+            {funnel && !funnel.on ? (funnel.problem === 'off' ? 'Making it public so anyone can open it.' : funnel.message) : 'Checking it’s public.'}
           </p>
-          {(!funnel || (!funnel.on && (funnel.problem === 'off' || funnel.problem === 'other-port'))) && (
-            <button className="primary" onClick={() => void makePublic()} disabled={turningOn}>
-              {turningOn ? 'Turning on Funnel…' : 'Make the link public'}
-            </button>
+          {funnel && !funnel.on && funnel.approve && (
+            <a className="button primary" href={funnel.approve} target="_blank" rel="noreferrer">
+              Allow sharing in Tailscale (once)
+            </a>
           )}
-          {funnel?.approve && (
-            <p className="small" style={{ margin: 0 }}>
-              Tailscale asks you to allow Funnel once:{' '}
-              <a href={funnel.approve} target="_blank" rel="noreferrer">
-                approve it here
-              </a>
-              , then press <em>Make the link public</em> again.
-            </p>
+          {funnel && !funnel.on && funnel.approve && <p className="small muted" style={{ margin: 0 }}>Tailscale asks the first time only. After you allow it, the link appears here by itself.</p>}
+          {funnel && !funnel.on && funnel.problem === 'other-port' && (
+            <button onClick={() => void makePublic()} disabled={turningOn}>
+              {turningOn ? 'Switching…' : 'Use it for the players’ page'}
+            </button>
           )}
           {funnel && !funnel.on && funnel.problem === 'no-tailscale' && !link?.publicUrlSet && (
             <p className="small muted" style={{ margin: 0 }}>
@@ -116,10 +131,10 @@ export function JoinPanel({ state }: { state: EncounterState }) {
         </div>
       )}
       <div className="row">
-        <button className="primary" onClick={() => void post()} disabled={!shown} title={link?.url ? 'Into the voice channel being recorded, or where /encounter was last used' : 'Set the public address first'}>
+        <button className="primary" onClick={() => void post()} disabled={!shown} title={shown ? 'Into the voice channel being recorded, or where /encounter was last used' : 'The link isn’t public yet'}>
           Post to Discord
         </button>
-        <button onClick={() => void copy()} disabled={!shown} title={shown ? 'Anyone with this link can join' : 'Make the link public first'}>
+        <button onClick={() => void copy()} disabled={!shown} title={shown ? 'Anyone with this link can join' : 'The link isn’t public yet'}>
           Copy link
         </button>
         {link?.local && (

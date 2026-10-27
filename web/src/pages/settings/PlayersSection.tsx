@@ -47,7 +47,7 @@ export function PlayersSection({ config, update, err }: SectionProps) {
         </p>
         <div className="row">
           <button className="primary" onClick={() => void setUp()} disabled={settingUp}>
-            {settingUp ? 'Setting up…' : 'Set it up for me'}
+            {settingUp ? 'Checking…' : 'Make it public now'}
           </button>
           {funnel && (
             <span className={`small ${funnel.on ? 'good-text' : 'bad-text'}`} role="status">
@@ -64,7 +64,10 @@ export function PlayersSection({ config, update, err }: SectionProps) {
             </span>
           )}
         </div>
-        <p className="muted small">Or by hand:</p>
+        <p className="muted small">
+          You shouldn’t need this: the app makes the link public by itself when it starts and whenever you share a link. It’s here if Funnel serves something else on this
+          Mac, or to do it by hand:
+        </p>
         <ol className="small setup-steps">
           <li>
             In the Tailscale admin console: turn on <strong>MagicDNS</strong> and <strong>HTTPS certificates</strong> (DNS page).

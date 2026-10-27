@@ -30,12 +30,12 @@ export function readFunnel(status: Status | null, serve: ServeConfig | null, por
   if (status.BackendState !== 'Running') return { on: false, problem: 'stopped', publicUrl: null, message: 'Tailscale isn’t connected: open Tailscale on this Mac and log in.' };
   const host = status.Self?.DNSName?.replace(/\.$/, '');
   if (!host || !status.CertDomains?.length)
-    return { on: false, problem: 'no-https', publicUrl: host ? `https://${host}` : null, message: 'Turn on MagicDNS and HTTPS certificates in the Tailscale admin console (the DNS page), then try again.' };
+    return { on: false, problem: 'no-https', publicUrl: host ? `https://${host}` : null, message: 'Tailscale needs your OK, once, to share the link publicly.' };
   const publicUrl = `https://${host}`;
   const site = `${host}:443`;
   const proxy = serve?.Web?.[site]?.Handlers?.['/']?.Proxy;
   const proxiedPort = proxy ? Number(new URL(proxy.includes('://') ? proxy : `http://${proxy}`).port || 80) : null;
-  if (!serve?.AllowFunnel?.[site]) return { on: false, problem: 'off', publicUrl, message: 'Funnel is off: players outside your Tailscale can’t open the link yet.' };
+  if (!serve?.AllowFunnel?.[site]) return { on: false, problem: 'off', publicUrl, message: 'Making the link public…' };
   if (proxiedPort !== port) return { on: false, problem: 'other-port', publicUrl, message: `Funnel is on, but for port ${proxiedPort ?? '?'}, not the players’ page (${port}).` };
   return { on: true, publicUrl, message: 'Anyone with the link can join.' };
 }
@@ -68,11 +68,74 @@ export function approvalLink(output: string): string | null {
  */
 export async function turnOnFunnel(cli: TailscaleCli, port: number): Promise<{ state: FunnelState; approve: string | null }> {
   const before = await funnelState(cli, port);
-  if (before.on || before.problem === 'no-tailscale' || before.problem === 'stopped' || before.problem === 'no-https') return { state: before, approve: null };
+  // Without HTTPS on the tailnet, running Funnel is what asks to turn it on (the same approval page).
+  if (before.on || before.problem === 'no-tailscale' || before.problem === 'stopped') return { state: before, approve: null };
   const run = await cli(['funnel', '--bg', String(port)], 20_000);
   const approve = approvalLink(`${run?.stdout ?? ''}\n${run?.stderr ?? ''}`);
   const after = await funnelState(cli, port);
   return { state: after, approve: after.on ? null : approve };
+}
+
+/**
+ * Keeps the players' link public with nothing for the DM to do: when Funnel is off it turns it on
+ * (at start, and whenever the link is wanted), saves the address, and remembers Tailscale's
+ * one-time approval page if the tailnet hasn't allowed Funnel yet, trying again after. It never
+ * replaces a Funnel that serves something else on this Mac (that's a choice for the DM).
+ */
+export class PublicLink {
+  private last: FunnelState | null = null;
+  private approve: string | null = null;
+  private tried = -Infinity;
+  private running: Promise<void> | null = null;
+
+  constructor(
+    private readonly opts: {
+      cli: TailscaleCli;
+      port: () => number;
+      saved: () => string | undefined;
+      save: (url: string) => void;
+      now?: () => number;
+      /** How long between automatic attempts (each can wait for Tailscale up to 20 s). */
+      retryMs?: number;
+    },
+  ) {}
+
+  /** Funnel's state now, turning it on first when it's off (at most once per retry interval). */
+  async ensure(): Promise<FunnelState & { saved: string | null; approve: string | null }> {
+    const now = (this.opts.now ?? Date.now)();
+    const state = await funnelState(this.opts.cli, this.opts.port());
+    const canFix = !state.on && (state.problem === 'off' || state.problem === 'no-https');
+    if (canFix && !this.running && now - this.tried >= (this.opts.retryMs ?? 20_000)) {
+      this.tried = now;
+      this.running = turnOnFunnel(this.opts.cli, this.opts.port()).then(
+        ({ state: after, approve }) => {
+          this.last = after;
+          this.approve = after.on ? null : (approve ?? this.approve);
+          this.remember(after);
+        },
+        () => undefined,
+      );
+      await this.running;
+      this.running = null;
+    } else this.last = state;
+    const current = this.last ?? state;
+    if (current.on) this.approve = null;
+    this.remember(current);
+    return { ...current, saved: current.on ? current.publicUrl : (this.opts.saved() ?? null), approve: this.approve };
+  }
+
+  /** Turns Funnel on now, even over a Funnel serving another port (the DM asked for it). */
+  async force(): Promise<FunnelState & { saved: string | null; approve: string | null }> {
+    const { state, approve } = await turnOnFunnel(this.opts.cli, this.opts.port());
+    this.last = state;
+    this.approve = state.on ? null : approve;
+    this.remember(state);
+    return { ...state, saved: state.on ? state.publicUrl : (this.opts.saved() ?? null), approve: this.approve };
+  }
+
+  private remember(state: FunnelState) {
+    if (state.on && state.publicUrl !== this.opts.saved()) this.opts.save(state.publicUrl);
+  }
 }
 
 /** Where the Tailscale command is: on the PATH, from Homebrew, or inside the Mac app. */

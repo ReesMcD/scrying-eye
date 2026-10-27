@@ -5,7 +5,8 @@ import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { createApi, miniStoreFor, pollServiceFor, wikiDungeonsFor, wikiEncountersFor } from './api.js';
+import { createApi, miniStoreFor, pollServiceFor, publicLinkFor, wikiDungeonsFor, wikiEncountersFor } from './api.js';
+import { systemTailscale } from './funnel.js';
 import { publicJoinUrl } from './encounterRoutes.js';
 import type { PasswordSource } from './auth.js';
 import { networkGuard } from './network.js';
@@ -109,6 +110,9 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const polls = pollServiceFor(opts.dataDir, configStore, opts.bot, log);
   if (opts.bot) polls.start();
 
+  // The players' link is made public on its own (Tailscale Funnel): the DM just sends it.
+  const publicLink = publicLinkFor(configStore, systemTailscale());
+
   const app = new Hono();
   app.use('*', networkGuard(opts.allowLan ?? false));
   app.route(
@@ -124,6 +128,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       mapArt,
       polls,
       minis,
+      publicLink,
       ...(opts.bot ? { bot: opts.bot } : {}),
       ...(opts.music ? { music: opts.music } : {}),
       ...(opts.corsOrigins ? { corsOrigins: opts.corsOrigins } : {}),
@@ -156,6 +161,14 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
           log(`The players' page couldn't start on port ${playerPort}: ${err.message}. Change players.port in Settings.`);
           return null;
         });
+  // Once the players' page is up, make sure its link is public.
+  void players.then(async (started) => {
+    if (!started) return;
+    const link = await publicLink.ensure().catch(() => null);
+    if (!link || (!link.on && link.problem === 'no-tailscale')) return;
+    if (link.on) log(`Players' link is public: ${link.publicUrl}`);
+    else log(`Players' link isn't public yet: ${link.message}${link.approve ? ` Allow it once here: ${link.approve}` : ''}`);
+  });
 
   return new Promise((resolvePromise, reject) => {
     let server: ServerType;

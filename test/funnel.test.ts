@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { approvalLink, readFunnel, turnOnFunnel, type TailscaleCli } from '../src/app/funnel.js';
+import { approvalLink, PublicLink, readFunnel, turnOnFunnel, type TailscaleCli } from '../src/app/funnel.js';
 import { createApi } from '../src/app/api.js';
 import { ConfigStore } from '../src/app/configStore.js';
 import { JobRunner } from '../src/app/jobs.js';
@@ -34,8 +34,8 @@ test('Tailscale’s approval page is found in what the command prints', () => {
 });
 
 /** A pretend Tailscale: Funnel turns on when asked, unless the tailnet hasn't approved it yet. */
-function fakeTailscale(opts: { approved: boolean; installed?: boolean }): { cli: TailscaleCli; calls: string[][] } {
-  let serve: object = {};
+function fakeTailscale(opts: { approved: boolean; installed?: boolean; serving?: object }): { cli: TailscaleCli; calls: string[][]; approve(): void } {
+  let serve: object = opts.serving ?? {};
   const calls: string[][] = [];
   const cli: TailscaleCli = async (args) => {
     calls.push(args);
@@ -49,7 +49,7 @@ function fakeTailscale(opts: { approved: boolean; installed?: boolean }): { cli:
     }
     return { code: 1, stdout: '', stderr: 'unknown' };
   };
-  return { cli, calls };
+  return { cli, calls, approve: () => void (opts.approved = true) };
 }
 
 test('turning Funnel on: it runs in the background for the players’ port, or hands back Tailscale’s approval page', async () => {
@@ -69,17 +69,44 @@ test('turning Funnel on: it runs in the background for the players’ port, or h
   assert.ok(!none.calls.some((a) => a[1] === '--bg'), 'nothing to run without Tailscale');
 });
 
-test('the app turns Funnel on and saves its address, so the players’ link is the one that works', async () => {
+test('the link goes public by itself: Funnel turns on when the link is wanted, after Tailscale’s one-time OK if needed', async () => {
+  let saved: string | undefined;
+  let now = 0;
+  const tailscale = fakeTailscale({ approved: false });
+  const link = new PublicLink({ cli: tailscale.cli, port: () => 4410, saved: () => saved, save: (url) => void (saved = url), now: () => now, retryMs: 20_000 });
+
+  const first = await link.ensure();
+  assert.equal(first.on, false);
+  assert.equal(first.approve, 'https://login.tailscale.com/f/funnel?node=n1', 'the page to allow it, once');
+  const again = await link.ensure();
+  assert.equal(again.approve, first.approve, 'still shown while waiting');
+  assert.equal(tailscale.calls.filter((a) => a[1] === '--bg').length, 1, 'not tried again within the retry interval');
+
+  tailscale.approve();
+  now += 20_000;
+  const ready = await link.ensure();
+  assert.equal(ready.on, true);
+  assert.equal(ready.approve, null);
+  assert.equal(saved, `https://${HOST}`, 'its address is saved for every link from now on');
+});
+
+test('a Funnel already serving something else on this Mac is left alone unless the DM asks', async () => {
+  const tailscale = fakeTailscale({ approved: true, serving: funnelOn(8080) });
+  const link = new PublicLink({ cli: tailscale.cli, port: () => 4410, saved: () => undefined, save: () => undefined });
+  const state = await link.ensure();
+  assert.equal(state.on ? 'on' : state.problem, 'other-port');
+  assert.ok(!tailscale.calls.some((a) => a[1] === '--bg'));
+  assert.equal((await link.force()).on, true, 'the DM chose to use it for the players’ page');
+});
+
+test('asking the app for the link makes it public and saves its address, so the link is the one that works', async () => {
   const root = mkdtempSync(join(tmpdir(), 'funnel-'));
   const configPath = join(root, 'config.yaml');
   writeFileSync(configPath, '# my settings\ncampaigns: {}\n');
   const api = createApi({ password: 'pw', dataDir: join(root, 'data'), configStore: new ConfigStore(configPath), jobs: new JobRunner(async () => {}), tailscale: fakeTailscale({ approved: true }).cli });
   const call = async (method: 'GET' | 'POST') => (await api.request('/players/funnel', { method, headers: { Authorization: 'Bearer pw', 'Content-Type': 'application/json' }, ...(method === 'POST' ? { body: '{}' } : {}) })).json() as Promise<FunnelStatus>;
 
-  const before = await call('GET');
-  assert.equal(before.on, false);
-  assert.equal(before.saved, null);
-  const after = await call('POST');
+  const after = await call('GET');
   assert.equal(after.on, true);
   assert.equal(after.saved, `https://${HOST}`);
   const yaml = readFileSync(configPath, 'utf8');
