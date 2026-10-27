@@ -46,12 +46,18 @@ export function loadPictures(ids: readonly string[], load: (id: string) => Promi
 /** The format's drawing order. */
 export const DRAW_ORDER: TerrainKind[] = ['floor', 'elevation', 'water', 'difficult', 'cover', 'object', 'wall', 'door'];
 
-/** Ground, then terrain in the format's order (pictures where the art folder has them), then decals. `skip` leaves kinds out (the 3D view builds those). */
-export function paintTerrain(ctx: CanvasRenderingContext2D, map: BattleMap, s: number, colors: Palette, art: ArtPlan | null | undefined, skip?: ReadonlySet<TerrainKind>) {
-  ctx.fillStyle = groundColor(map.ground, colors);
-  ctx.fillRect(0, 0, map.width * s, map.height * s);
-  const groundImage = picture(art?.ground);
-  if (groundImage) for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) ctx.drawImage(groundImage, x * s, y * s, s, s);
+/**
+ * Ground, then terrain in the format's order (pictures where the art folder has them), then decals.
+ * `skip` leaves kinds out (the 3D view builds those); `ground: false` leaves the ground clear (the 3D
+ * view's KayKit floor tiles show through).
+ */
+export function paintTerrain(ctx: CanvasRenderingContext2D, map: BattleMap, s: number, colors: Palette, art: ArtPlan | null | undefined, skip?: ReadonlySet<TerrainKind>, ground = true) {
+  if (ground) {
+    ctx.fillStyle = groundColor(map.ground, colors);
+    ctx.fillRect(0, 0, map.width * s, map.height * s);
+    const groundImage = picture(art?.ground);
+    if (groundImage) for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) ctx.drawImage(groundImage, x * s, y * s, s, s);
+  }
   for (const kind of DRAW_ORDER) {
     if (skip?.has(kind)) continue;
     map.terrain.forEach((t, i) => {

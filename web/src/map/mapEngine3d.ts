@@ -5,6 +5,8 @@ import { moveGuide } from './moveGuide';
 import { leanFor, miniCard } from './standee';
 import { miniForCreature } from '../../../src/shared/minis';
 import { buildScene, cellAt, figureOf, sceneKey, type BoxPart, type MapScene } from '../../../src/shared/mapScene';
+import { kitPlan } from '../../../src/shared/kitPlan';
+import { buildKit, kitModels, loadKit } from './kit';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
 import { initials, label, paintFog, paintGrid, paintOverlays, paintTerrain, palette, picture, type Palette } from './paint';
@@ -12,8 +14,9 @@ import { initials, label, paintFog, paintGrid, paintOverlays, paintTerrain, pale
 /**
  * The 3D battle map (#53), drawn with three.js. The floor is the 2D map painted from above (ground,
  * water, difficult ground, spell areas, fog, art), and on it stand walls, doors, raised ground,
- * cover, objects and the tokens as figures. It draws only when something changes: no render
- * loop, so an idle map costs nothing.
+ * cover, objects and the tokens as figures. Built places (dungeons, keeps) are dressed in KayKit's
+ * dungeon pieces once they've loaded (./kit.ts); until then, or if they can't load, plain shapes
+ * stand in. It draws only when something changes: no render loop, so an idle map costs nothing.
  */
 
 /** Built as boxes and props instead of being painted on the floor. */
@@ -58,6 +61,9 @@ export class MapEngine3d {
   private readonly sun = new THREE.DirectionalLight(0xffffff, 1.7);
   private readonly sky = new THREE.HemisphereLight(0xdfe8ff, 0x3a3328, 1.1);
   private readonly world = new THREE.Group();
+  /** KayKit floor tiles are down: the painted floor leaves out its ground so they show through. */
+  private kitFloor = false;
+  private disposed = false;
   private readonly figures = new Map<string, FigureMeshes>();
   private readonly floorCanvas = document.createElement('canvas');
   private floorTexture: THREE.CanvasTexture;
@@ -227,10 +233,25 @@ export class MapEngine3d {
     disposeTree(this.world, this.floorTexture);
     this.world.clear();
     this.figures.clear();
-    const { showNotes } = this.props();
+    const { showNotes, map } = this.props();
 
-    // The board: the painted floor on a slab.
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(m.width, m.height), new THREE.MeshStandardMaterial({ map: this.floorTexture, roughness: 0.95 }));
+    // KayKit's pieces for a built place, once the models are in; plain shapes until then.
+    const plan = kitPlan(map, m);
+    const kit = kitModels();
+    if (plan && !kit)
+      loadKit().then(
+        () => {
+          if (this.disposed) return;
+          this.builtKey = '';
+          this.update();
+        },
+        () => undefined,
+      );
+    const dressed = plan && kit ? plan : null;
+    this.kitFloor = !!dressed?.floor;
+
+    // The board: the painted floor on a slab (see-through over KayKit's tiles).
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(m.width, m.height), new THREE.MeshStandardMaterial({ map: this.floorTexture, roughness: 0.95, transparent: this.kitFloor, depthWrite: !this.kitFloor }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(m.width / 2, 0, m.height / 2);
     floor.receiveShadow = true;
@@ -240,13 +261,14 @@ export class MapEngine3d {
     slab.receiveShadow = true;
     this.world.add(floor, slab);
 
-    // Boxes, one instanced mesh per kind of thing.
+    // Boxes, one instanced mesh per kind of thing (less what KayKit's pieces stand in for).
     const unit = new THREE.BoxGeometry(1, 1, 1);
     const byPart = new Map<string, typeof m.boxes>();
-    for (const b of m.boxes) {
+    m.boxes.forEach((b, i) => {
+      if (dressed?.replacedBoxes.has(i)) return;
       const k = b.part === 'door' ? `door-${b.state === 'locked' ? 'locked' : 'plain'}` : b.part === 'secret' && !showNotes ? 'wall' : b.part;
       byPart.set(k, [...(byPart.get(k) ?? []), b]);
-    }
+    });
     const matrix = new THREE.Matrix4();
     for (const [k, boxes] of byPart) {
       const part = k.startsWith('door') ? 'door' : (k as BoxPart);
@@ -263,12 +285,13 @@ export class MapEngine3d {
       mesh.receiveShadow = true;
       this.world.add(mesh);
     }
+    if (dressed && kit) this.world.add(buildKit(dressed, kit));
 
     // Raised ground keeps the floor's picture on top.
     const tops = m.boxes.filter((b) => b.part === 'elevation');
     if (tops.length) this.world.add(this.floorPatches(tops, m));
 
-    this.addProps(m);
+    this.addProps(m, dressed?.replacedProps);
     this.addWater(m);
     this.addPits(m);
     this.addLights(m);
@@ -379,7 +402,8 @@ export class MapEngine3d {
     return mesh;
   }
 
-  private addProps(m: MapScene): void {
+  private addProps(scene: MapScene, skip?: ReadonlySet<number>): void {
+    const m = skip?.size ? { ...scene, props: scene.props.filter((_, i) => !skip.has(i)) } : scene;
     const matrix = new THREE.Matrix4();
     const spin = (seed: number) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), seed * Math.PI * 2);
     const make = (geometry: THREE.BufferGeometry, material: THREE.Material, list: Array<{ p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3; color?: THREE.Color }>) => {
@@ -481,7 +505,7 @@ export class MapEngine3d {
   /** The floor picture: the 2D map without what's built in 3D, repainted when anything on it changes. */
   private paintFloor(): void {
     const { map, art, fog, overlays, showNotes } = this.props();
-    const key = JSON.stringify([this.builtKey, fog ? [...fog.revealed].join(';') : null, fog?.solid, overlays, art?.ids.map((id) => !!picture(id)), showNotes, this.colors]);
+    const key = JSON.stringify([this.builtKey, this.kitFloor, fog ? [...fog.revealed].join(';') : null, fog?.solid, overlays, art?.ids.map((id) => !!picture(id)), showNotes, this.colors]);
     if (key === this.floorKey) return;
     this.floorKey = key;
     // Up to 48 px a square, within a texture a phone can hold (an 80-square map at 4096 px is 64 MB).
@@ -495,7 +519,8 @@ export class MapEngine3d {
     if (resized) this.replaceFloorTexture();
     const ctx = this.floorCanvas.getContext('2d');
     if (!ctx) return;
-    paintTerrain(ctx, map, s, this.colors, art, BUILT);
+    ctx.clearRect(0, 0, this.floorCanvas.width, this.floorCanvas.height);
+    paintTerrain(ctx, map, s, this.colors, art, BUILT, !this.kitFloor);
     paintGrid(ctx, map, s, this.colors);
     if (showNotes) {
       for (const room of map.rooms ?? []) {
@@ -848,6 +873,7 @@ export class MapEngine3d {
   }
 
   dispose(): void {
+    this.disposed = true;
     cancelAnimationFrame(this.frame);
     cancelAnimationFrame(this.animation);
     this.observer.disconnect();
@@ -883,6 +909,8 @@ function glowTexture(): THREE.Texture {
 
 function disposeTree(root: THREE.Object3D, keep?: THREE.Texture): void {
   root.traverse((o) => {
+    // KayKit's models are shared by every map: never freed.
+    if (o.userData.kit) return;
     const mesh = o as THREE.Mesh | THREE.Sprite;
     if ('geometry' in mesh && mesh.geometry) mesh.geometry.dispose();
     const materials = 'material' in mesh ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];

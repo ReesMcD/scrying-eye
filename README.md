@@ -500,6 +500,7 @@ What's in it:
       token goes back where its turn started.
     - **Flanked:** shown on a creature with two foes able to act on opposite sides or corners
       (the optional rule; use it or don't).
+  - **Dungeons in 3D** are built from [KayKit's Dungeon pieces](https://kaylousberg.itch.io/kaykit-dungeon-remastered) (CC0, bundled in `web/public/kaykit/`): stone walls with pillars at the corners, tiled floors (stone, wood or dirt by the map's ground), pillars, stairs, chests, crates, barrels and tables. Maps outdoors (a forest, a field) keep their trees and rocks. Until the pieces load, or if they can't, plain shapes stand in.
   - **3D:** the **2D / 3D** switch on the map (tracker and players' phones) shows the same map in
     3D: walls and doors with height, raised ground, cover, trees and pillars, water, and the
     tokens as paper standees (each creature's paper mini in a stand coloured by side) with their names. The cards turn to face you and lie flat when you look straight down, so the top view reads like the 2D map. Drag to turn the camera, pinch or scroll to zoom,

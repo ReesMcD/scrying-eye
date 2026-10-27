@@ -29,6 +29,7 @@ import { playerView } from './view.js';
  *   GET  /p/:code/art             the map's pictures (from the DM's art folder), if any
  *   GET  /p/:code/art/:id         one of those pictures, and only those
  *   GET  /p/:code/dm              where the DM's own controls are (over Tailscale), for "I'm the DM"
+ *   GET  /kaykit/*                the 3D map's dungeon models
  *   GET  /mini/:token             a player's page for their character's paper mini
  *   GET  /m/:token                that character's name and mini
  *   PUT  /m/:token                { mini }: saves it (the link opens that one character, nothing else)
@@ -74,7 +75,8 @@ const securityHeaders: MiddlewareHandler = async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   // The join code is in the URL: never send it on as a referrer.
   c.header('Referrer-Policy', 'no-referrer');
-  c.header('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'");
+  // blob: lets the 3D map read the textures inside KayKit's model files.
+  c.header('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; base-uri 'none'; form-action 'none'");
   c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
 };
@@ -248,6 +250,12 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
       if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable');
     });
     app.get('/assets/*', serveStatic({ root: webDist }));
+    // KayKit's dungeon models for the 3D map (CC0, web/public/kaykit).
+    app.use('/kaykit/*', async (c, next) => {
+      await next();
+      if (c.res.ok) c.header('Cache-Control', 'public, max-age=604800');
+    });
+    app.get('/kaykit/*', serveStatic({ root: webDist }));
   }
   app.all('*', (c) => c.text('Not found', 404));
   return app;
