@@ -544,6 +544,9 @@ What's in it:
   install.
   - Each encounter has its own secret link (copy it from the tracker). Players pick their character
     once and the device remembers it.
+  - **I'm the DM** on that link opens your own controls (the live encounter page) on your phone, so
+    you can run turns and move pieces from it. It goes over Tailscale, so the phone needs Tailscale
+    on; the controls are never public.
   - They see whose turn it is ("Your turn" buzzes the phone) and everyone's conditions.
   - They set only their own character's conditions, move their own token
     or a friend's (never a monster's), roll dice for the table and place their own spell area (hidden monsters, the
