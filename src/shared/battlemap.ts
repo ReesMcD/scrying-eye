@@ -33,6 +33,24 @@ export interface Terrain {
   /** Stairs between a dungeon's levels: where they come out (`level` 0 is outside, the way in). */
   to?: { level: number; at?: Cell };
   rises?: 'up' | 'down';
+  /** How a creature gets past it (one way or several). Missing: the defaults by kind and asset (`crossings`). */
+  cross?: Crossing | Crossing[];
+}
+
+/** Ways past an obstacle. `no`: there's no way past; `break`: only by breaking it. */
+export type CrossHow = 'no' | 'difficult' | 'climb' | 'jump' | 'squeeze' | 'swim' | 'break';
+
+/** One way past an obstacle, and the check it takes. The board shows it; the DM rules. */
+export interface Crossing {
+  how: CrossHow;
+  /** The ability check, as the wiki writes it ("athletics", "strength"). */
+  check?: string;
+  dc?: number;
+  /** Extra movement it costs, in feet (on top of the 5 ft square). */
+  feet?: number;
+  /** For breaking: the object's AC and hit points (DMG object table). */
+  ac?: number;
+  hp?: number;
 }
 
 export interface Light {
@@ -169,20 +187,108 @@ export function blocks(t: Terrain): boolean {
   return solid(t) || (t.kind === 'water' && t.depth === 'deep');
 }
 
-/** Walls, closed or locked doors and solid objects: nothing goes into them or through them (deep water is swum). */
+/** Nothing walks into it or through it without changing the map: walls, closed doors, pillars, trees. */
 export function solid(t: Terrain): boolean {
-  return t.kind === 'wall' || (t.kind === 'door' && t.state !== 'open') || (t.kind === 'object' && SOLID_OBJECT.test(words(t)));
+  const ways = crossings(t);
+  return ways.length > 0 && ways.every((w) => w.how === 'no' || w.how === 'break');
 }
 
-/** Objects nobody stands in or on: pillars, statues, trees, boulders. Any other object is climbed onto. */
-const SOLID_OBJECT = /\b(pillars?|columns?|statues?|idols?|obelisks?|posts?|trees?|oaks?|pines?|willows?|stalagmites?|stalactites?|boulders?|rocks?|menhirs?|monoliths?)\b/;
+/** Something to climb onto (or jump), costing extra movement: crates, carts, tables, boulders. */
+export function climbable(t: Terrain): boolean {
+  return crossings(t).some((w) => w.how === 'climb' || w.how === 'jump');
+}
+
+const HOWS: readonly CrossHow[] = ['no', 'difficult', 'climb', 'jump', 'squeeze', 'swim', 'break'];
+const isCrossing = (c: unknown): c is Crossing => !!c && typeof c === 'object' && HOWS.includes((c as Crossing).how);
+
+/** Objects nobody stands in or on. */
+const SOLID_OBJECT = /\b(pillars?|columns?|statues?|idols?|obelisks?|posts?|trees?|oaks?|pines?|willows?|stalagmites?|stalactites?|menhirs?|monoliths?)\b/;
+const BOULDER = /\b(boulders?|rocks?)\b/;
+const FURNITURE = /\b(carts?|wagons?|tables?|crates?|barrels?)\b/;
+const LIGHT = /\b(torch|brazier|campfire|fire|lantern|sconce|candles?)\b/;
 const words = (t: Terrain) => `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
 
-/** Something to climb onto and stand on: crates, barrels, chests, tables (cover, and objects that aren't solid or a light). */
-export function climbable(t: Terrain): boolean {
-  return t.kind === 'cover' || (t.kind === 'object' && !SOLID_OBJECT.test(words(t)) && !LIGHT.test(words(t)));
+/** A wooden door, from the DMG's object table. */
+const LOCKED_DOOR: Crossing = { how: 'break', check: 'strength', dc: 15, ac: 15, hp: 18 };
+
+/**
+ * How a creature gets past a feature: what the map says (`cross`), or the defaults by kind and
+ * asset. Empty when it isn't in the way at all (floor, an open door, a torch).
+ */
+export function crossings(t: Terrain): Crossing[] {
+  const given = (Array.isArray(t.cross) ? t.cross : t.cross ? [t.cross] : []).filter(isCrossing);
+  if (given.length) return given;
+  const w = words(t);
+  switch (t.kind) {
+    case 'wall':
+      return [{ how: 'no' }];
+    case 'door':
+      return t.state === 'open' ? [] : t.state === 'locked' ? [LOCKED_DOOR] : [{ how: 'no' }];
+    case 'difficult':
+      return [{ how: 'difficult' }];
+    case 'water':
+      return [t.depth === 'deep' ? { how: 'swim' } : { how: 'difficult' }];
+    case 'cover':
+    case 'object':
+      if (t.kind === 'object' && SOLID_OBJECT.test(w)) return [{ how: 'no' }];
+      if (BOULDER.test(w)) return [{ how: 'climb', check: 'athletics', dc: 10 }];
+      if (FURNITURE.test(w)) return [{ how: 'climb', check: 'athletics', dc: 10 }, { how: 'jump', check: 'acrobatics', dc: 10 }];
+      return t.kind === 'object' && LIGHT.test(w) ? [] : [{ how: 'climb' }];
+    default:
+      return [];
+  }
 }
-const LIGHT = /\b(torch|brazier|campfire|fire|lantern|sconce|candles?)\b/;
+
+/** What a feature is called on the board: its label, its asset, or its kind ("the boulder"). */
+export function featureName(t: Terrain): string {
+  const name = (t.label ?? t.asset ?? (t.kind === 'object' ? 'object' : t.kind)).replace(/[-_]/g, ' ').trim();
+  return /^(the|a|an)\b/i.test(name) ? name : `the ${name.toLowerCase()}`;
+}
+
+const VERB: Record<CrossHow, string> = { no: 'no way past', difficult: 'difficult ground', climb: 'climb', jump: 'jump', squeeze: 'squeeze past', swim: 'swim', break: 'break' };
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** One way past, in words: "climb the boulder (DC 10 Athletics)". */
+export function crossingText(t: Terrain, way: Crossing): string {
+  const what = way.how === 'no' || way.how === 'difficult' ? VERB[way.how] : `${VERB[way.how]} ${featureName(t)}`;
+  const check = way.check ? `${way.dc ? `DC ${way.dc} ` : ''}${cap(way.check)}` : way.dc ? `DC ${way.dc}` : '';
+  const extra = [check, way.feet ? `+${way.feet} ft` : '', way.how === 'break' && way.ac ? `AC ${way.ac}` : '', way.how === 'break' && way.hp ? `${way.hp} HP` : ''].filter(Boolean).join(', ');
+  return extra ? `${what} (${extra})` : what;
+}
+
+/** The movement squares a way past costs to enter, or Infinity when walking can't use it. */
+export function crossingSquares(way: Crossing): number {
+  if (way.how === 'no' || way.how === 'break') return Infinity;
+  return way.feet !== undefined ? 1 + Math.max(0, Math.ceil(way.feet / 5)) : 2;
+}
+
+/** The obstacles covering a square (ones in the way, with a way past or not), by index in `terrain`. */
+export function obstaclesAt(map: BattleMap, at: Cell): number[] {
+  return map.terrain.flatMap((t, i) => (crossings(t).length && !t.secret && cellsOf(t, map.width, map.height).some(([x, y]) => x === at[0] && y === at[1]) ? [i] : []));
+}
+
+/** Whether the DM can break a feature: a door, an object or cover; a wall only when the map says it breaks. */
+export function breakable(t: Terrain): boolean {
+  if (t.kind === 'door') return t.state !== 'open';
+  if (t.kind === 'object' || t.kind === 'cover') return true;
+  return crossings(t).some((w) => w.how === 'break');
+}
+
+/**
+ * The DM ruled it broken: a door stays open for good; anything else is gone from the map, or just
+ * its part on the square `at` (one of a row of crates).
+ */
+export function breakObstacle(map: BattleMap, index: number, at?: Cell): BattleMap {
+  const t = map.terrain[index];
+  if (!t || !breakable(t) || t.secret) throw new MapError('That can’t be broken');
+  if (t.kind === 'door') {
+    const { cross: _cross, ...door } = t;
+    return { ...map, terrain: map.terrain.map((x, i) => (i === index ? { ...door, state: 'open', label: `broken ${t.label ?? 'door'}` } : x)) };
+  }
+  const rest = at && isCell(at) ? cellsOf(t, map.width, map.height).filter(([x, y]) => x !== at[0] || y !== at[1]) : [];
+  const { rect: _rect, polygon: _polygon, ...base } = t;
+  return { ...map, terrain: map.terrain.flatMap((x, i) => (i !== index ? [x] : rest.length ? [{ ...base, cells: rest }] : [])) };
+}
 
 const key = (x: number, y: number) => `${x},${y}`;
 

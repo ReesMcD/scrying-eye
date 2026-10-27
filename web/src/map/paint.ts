@@ -1,4 +1,4 @@
-import { cellsOf, SIZE_SQUARES, type BattleMap, type Cell, type Terrain, type TerrainKind, type TokenSize } from '../../../src/shared/battlemap';
+import { cellsOf, crossings, SIZE_SQUARES, type CrossHow, type BattleMap, type Cell, type Terrain, type TerrainKind, type TokenSize } from '../../../src/shared/battlemap';
 import type { ArtPlan } from '../../../src/shared/types';
 
 /**
@@ -209,6 +209,38 @@ export function label(ctx: CanvasRenderingContext2D, text: string, x: number, y:
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, left, y);
+}
+
+const CROSS_ICON: Partial<Record<CrossHow, string>> = { climb: '⛰', jump: '↷', break: '⚒', squeeze: '⇔', swim: '≈' };
+
+/**
+ * For the DM: a small badge on each square of an obstacle that takes a check or a ruling to cross
+ * (climb, jump, break…). Tap it for the details.
+ */
+export function paintCrossings(ctx: CanvasRenderingContext2D, map: BattleMap, s: number, p: Palette) {
+  const r = Math.max(6, s * 0.17);
+  ctx.font = `600 ${Math.round(r * 1.25)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const t of map.terrain) {
+    if (t.secret) continue;
+    const ruled = crossings(t).filter((w) => w.check || w.dc || w.how === 'break');
+    const text = [...new Set(ruled.flatMap((w) => CROSS_ICON[w.how] ?? []))].join('');
+    if (!text) continue;
+    const w = Math.max(r * 2, ctx.measureText(text).width + r);
+    for (const [cx, cy] of cellsOf(t, map.width, map.height)) {
+      const x = cx * s + 2;
+      const y = (cy + 1) * s - 2 - r * 2;
+      ctx.fillStyle = p.surface;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, r * 2, r);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = p.warn;
+      ctx.fillText(text, x + w / 2, y + r);
+    }
+  }
 }
 
 /** The app's colours (light or dark), read from its CSS custom properties. */

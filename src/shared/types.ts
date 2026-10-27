@@ -748,6 +748,8 @@ export type EncounterAction =
   | { type: 'place'; id: string; at: Cell }
   | { type: 'door'; index: number; state: 'open' | 'closed' | 'locked' }
   | { type: 'difficult'; at: Cell; on: boolean }
+  /** The DM ruled an obstacle (its index in `terrain`) broken: a door opens for good, anything else (on square `at`) is gone. */
+  | { type: 'break'; index: number; at?: Cell }
   /** An empty map, for an encounter without one. */
   | { type: 'newMap'; width: number; height: number }
   /** The party found a secret door (its index in `terrain`): it becomes a closed door. */

@@ -10,7 +10,7 @@ import { kitPlan } from '../../../src/shared/kitPlan';
 import { buildKit, kitModels, loadKit } from './kit';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
-import { label, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, picture, type Palette } from './paint';
+import { label, paintCrossings, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, picture, type Palette } from './paint';
 
 /**
  * The 3D battle map (#53), drawn with three.js. The floor is the 2D map painted from above (ground,
@@ -540,6 +540,7 @@ export class MapEngine3d {
         if (!cells.length) continue;
         label(ctx, room.name ? `${room.id}. ${room.name}` : room.id, Math.min(...cells.map((c) => c[0])) * s + 4, Math.min(...cells.map((c) => c[1])) * s + 13, this.colors, this.colors.warn, 'left');
       }
+      paintCrossings(ctx, map, s, this.colors);
       // The DM's notes: a dot in the corner of the square, as on the flat map.
       ctx.fillStyle = this.colors.warn;
       for (const n of map.notes) {
