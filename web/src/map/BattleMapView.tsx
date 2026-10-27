@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { cellsOf, onBoard, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken } from '../../../src/shared/battlemap';
+import { cellsOf, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToken } from '../../../src/shared/battlemap';
+import { pathRoute } from '../../../src/shared/tableAids';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { ArtPlan, MiniSpec } from '../../../src/shared/types';
-import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintTerrain, palette, type Overlay, type Palette } from './paint';
+import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, type Overlay, type Palette } from './paint';
+import { dropAllowed, PENDING_MS, pendingMove, settled, shownAt, type PendingMove } from './pendingMove';
 import { moveGuide } from './moveGuide';
 import './map.css';
 
@@ -48,6 +50,8 @@ export interface MapViewProps {
   overlays?: Overlay[];
   /** When set, a drag on the map reports grid corners (placing an area, measuring) instead of panning. */
   onCornerDrag?: (from: Cell, to: Cell, done: boolean) => void;
+  /** Whose turn it is: the squares their token has walked this turn, drawn as a dotted trail. */
+  trail?: { token: string; cells: Cell[] } | null;
 }
 
 type View = { scale: number; ox: number; oy: number };
@@ -71,6 +75,7 @@ export function BattleMapView(props: MapViewProps) {
   const view = useRef<View>({ scale: 32, ox: 0, oy: 0 });
   const fitted = useRef<string>('');
   const drag = useRef<Drag | null>(null);
+  const pending = useRef<PendingMove | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const pointers = useRef(new Map<number, [number, number]>());
   const latest = useRef(props);
@@ -125,7 +130,7 @@ export function BattleMapView(props: MapViewProps) {
     }
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    const { map, info, selected, showNotes, art, fog, overlays } = latest.current;
+    const { map, info, selected, showNotes, art, fog, overlays, trail } = latest.current;
     const colors = palette(el);
     const { scale: s, ox, oy } = view.current;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -164,14 +169,19 @@ export function BattleMapView(props: MapViewProps) {
     if (fog) paintFog(ctx, map, s, fog, colors);
     paintOverlays(ctx, overlays ?? [], s, colors);
 
+    const walker = trail ? map.tokens.find((t) => t.id === trail.token) : undefined;
+    if (trail && walker) paintRoute(ctx, trail.cells, walker.size, s, colors.accent, 'trail');
+
     const d = drag.current;
+    const now = Date.now();
+    if (pending.current && settled(map, pending.current, now)) pending.current = null;
     for (const t of map.tokens) {
       const ti = info[t.id];
       if (d?.moved && d.tokenId === t.id) {
         paintToken(ctx, t, t.at, s, ti, colors, { faded: true });
         continue;
       }
-      paintToken(ctx, t, t.at, s, ti, colors, { selected: selected === t.id });
+      paintToken(ctx, t, shownAt(t, pending.current, now), s, ti, colors, { selected: selected === t.id });
     }
 
     // The token being dragged: where it would land, how far, and anything odd about the square.
@@ -181,14 +191,8 @@ export function BattleMapView(props: MapViewProps) {
         const guide = moveGuide(map, t, d.from, d.to, info[t.id]);
         const ok = !guide.warning;
         const half = (SIZE_SQUARES[t.size] * s) / 2;
-        ctx.strokeStyle = ok ? colors.accent : colors.warn;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(d.from[0] * s + half, d.from[1] * s + half);
-        ctx.lineTo(d.to[0] * s + half, d.to[1] * s + half);
-        ctx.stroke();
-        ctx.setLineDash([]);
+        // The way it would walk: around pillars and walls, not through them.
+        paintRoute(ctx, pathRoute(map, t.size, d.from, d.to), t.size, s, ok ? colors.accent : colors.warn, 'drag');
         paintToken(ctx, t, d.to, s, info[t.id], colors, { dragging: true });
         label(ctx, guide.warning ? `${guide.text} · ${guide.warning}` : guide.text, d.to[0] * s + half, d.to[1] * s - 16, colors, ok ? undefined : colors.warn);
       }
@@ -310,8 +314,13 @@ export function BattleMapView(props: MapViewProps) {
       drag.current = null;
       if (d.moved) {
         const t = latest.current.map.tokens.find((x) => x.id === d.tokenId);
-        // Dropped off the board, it goes back where it was.
-        if (t && (d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) && onBoard(latest.current.map, t.size, d.to)) latest.current.onMove(d.tokenId, d.to);
+        // Dropped off the board or into something solid, it goes back where it was. Otherwise it
+        // stays where it landed while the move goes to the server, rather than flashing back.
+        if (t && dropAllowed(latest.current.map, t, d.from, d.to)) {
+          pending.current = pendingMove(t.id, t.at, d.to, Date.now());
+          window.setTimeout(redraw, PENDING_MS + 50);
+          latest.current.onMove(d.tokenId, d.to);
+        }
       } else if (p) tap(p);
       redraw();
       return;

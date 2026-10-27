@@ -166,8 +166,23 @@ export function cellsOf(t: Terrain, width: number, height: number): Cell[] {
 
 /** Walls, closed or locked doors, deep water and solid objects: nothing stands there. */
 export function blocks(t: Terrain): boolean {
-  return t.kind === 'wall' || t.kind === 'object' || (t.kind === 'door' && t.state !== 'open') || (t.kind === 'water' && t.depth === 'deep');
+  return solid(t) || (t.kind === 'water' && t.depth === 'deep');
 }
+
+/** Walls, closed or locked doors and solid objects: nothing goes into them or through them (deep water is swum). */
+export function solid(t: Terrain): boolean {
+  return t.kind === 'wall' || (t.kind === 'door' && t.state !== 'open') || (t.kind === 'object' && SOLID_OBJECT.test(words(t)));
+}
+
+/** Objects nobody stands in or on: pillars, statues, trees, boulders. Any other object is climbed onto. */
+const SOLID_OBJECT = /\b(pillars?|columns?|statues?|idols?|obelisks?|posts?|trees?|oaks?|pines?|willows?|stalagmites?|stalactites?|boulders?|rocks?|menhirs?|monoliths?)\b/;
+const words = (t: Terrain) => `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
+
+/** Something to climb onto and stand on: crates, barrels, chests, tables (cover, and objects that aren't solid or a light). */
+export function climbable(t: Terrain): boolean {
+  return t.kind === 'cover' || (t.kind === 'object' && !SOLID_OBJECT.test(words(t)) && !LIGHT.test(words(t)));
+}
+const LIGHT = /\b(torch|brazier|campfire|fire|lantern|sconce|candles?)\b/;
 
 const key = (x: number, y: number) => `${x},${y}`;
 
@@ -201,6 +216,15 @@ export function canPlace(map: BattleMap, tokenId: string, size: TokenSize, at: C
     if (taken.has(key(x, y))) return { ok: false, reason: 'Someone is already there' };
   }
   return { ok: true };
+}
+
+/** Whether a token of this size at `at` would be inside a wall, a closed door or a solid object. */
+export function solidAt(map: BattleMap, size: TokenSize, at: Cell): boolean {
+  const inside = new Set(footprint(at, size).map(([x, y]) => key(x, y)));
+  const squares = (t: Terrain) => cellsOf(t, map.width, map.height).map(([x, y]) => key(x, y));
+  // A door is drawn over the wall it sits in: open, it's a way through.
+  const doorway = new Set(map.terrain.filter((t) => t.kind === 'door' && t.state === 'open').flatMap(squares));
+  return map.terrain.some((t) => solid(t) && squares(t).some((k) => inside.has(k) && !doorway.has(k)));
 }
 
 /** Distance in feet between two squares, 2024 rules: every square counts 5 ft, diagonals too. */
@@ -272,9 +296,10 @@ export function nearestFree(map: BattleMap, tokenId: string, size: TokenSize, fr
 export function moveToken(map: BattleMap, tokenId: string, at: Cell): BattleMap {
   const token = map.tokens.find((t) => t.id === tokenId);
   if (!token) throw new MapError('That token isn’t on the map');
-  // Like picking up a piece at the table: it goes anywhere on the board. The rules are the DM's
-  // to call; the map views say when a square looks wrong (canPlace).
+  // Like picking up a piece at the table: it goes anywhere on the board but into something solid
+  // (a wall, a pillar, a tree). Standing on another creature is the DM's call; the views say so.
   if (!onBoard(map, token.size, at)) throw new MapError('That’s off the map');
+  if (solidAt(map, token.size, at)) throw new MapError('That’s solid: go around it');
   return { ...map, tokens: map.tokens.map((t) => (t.id === tokenId ? { ...t, at: [at[0], at[1]] } : t)) };
 }
 

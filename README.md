@@ -495,9 +495,13 @@ What's in it:
     - **Distance:** dragging shows how far the move walks (the short way round walls, double
       through difficult ground and water, 5 ft diagonals) and, in a fight, the total this turn
       against the creature's speed when it's known ("20 ft · 35 of 30 ft this turn"). An odd
-      square says so ("someone's there", "in the way") and it lands there anyway.
-    - **Moved this turn:** under whoever's turn it is. It starts again each turn, or when the
-      token goes back where its turn started.
+      square says so ("someone's there", "in the way") and it lands there anyway, except inside
+      something solid (a wall, a closed door, a pillar, a statue, a tree, a boulder): that says
+      "solid: go around" and the token goes back. Crates, barrels, chests and tables are climbed
+      onto (double cost); in 3D the mini stands on top.
+    - **Moved this turn:** under whoever's turn it is, with a dotted trail of the squares it
+      walked (on the DM's map, players' phones and the screen view). It starts again each turn,
+      or when the token goes back where its turn started.
     - **Flanked:** shown on a creature with two foes able to act on opposite sides or corners
       (the optional rule; use it or don't).
   - **Dungeons in 3D** are built from [KayKit's Dungeon pieces](https://kaylousberg.itch.io/kaykit-dungeon-remastered) (CC0, bundled in `web/public/kaykit/`): stone walls with pillars at the corners, tiled floors (stone, wood or dirt by the map's ground), pillars, stairs, chests, crates, barrels and tables. Maps outdoors (a forest, a field) keep their trees and rocks. Until the pieces load, or if they can't, plain shapes stand in.

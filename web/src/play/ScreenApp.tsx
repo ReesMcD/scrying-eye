@@ -49,6 +49,7 @@ function Screen({ view }: { view: PlayerView }) {
     canMove: () => false,
     onMove: () => undefined,
     fog: view.fog ? { revealed: new Set(view.fog), solid: true } : null,
+    trail: view.trail ?? null,
     art,
     loadArt: play.artImage,
     label: `${view.title}: battle map`,

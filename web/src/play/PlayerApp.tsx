@@ -293,6 +293,7 @@ function PlayerMap({ view, act }: { view: PlayerView; act: (r: Parameters<typeof
         onMove={(token, at) => void act(token === myToken ? { type: 'move', at } : { type: 'move', at, token })}
         fog={view.fog ? { revealed: new Set(view.fog), solid: true } : null}
         overlays={area.overlays}
+        trail={view.trail ?? null}
         {...(view.me && area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}
         art={art}
         loadArt={play.artImage}

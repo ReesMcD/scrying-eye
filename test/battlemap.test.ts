@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blankMap, canPlace, cellsOf, distanceFeet, doorsAt, footprint, isDifficult, moveToken, nearestFree, placeToken, playersMap, readMap, setDifficult, setDoor, tokenAt } from '../src/shared/battlemap.js';
+import { blankMap, canPlace, cellsOf, distanceFeet, doorsAt, footprint, isDifficult, moveToken, nearestFree, placeToken, playersMap, readMap, setDifficult, setDoor, solidAt, tokenAt } from '../src/shared/battlemap.js';
 import { applyAction, newEncounter, makeCombatant } from '../src/encounter/rules.js';
 import { playerAction, playerView } from '../src/play/view.js';
 import type { EncounterState } from '../src/shared/types.js';
@@ -61,7 +61,9 @@ test('a token stands only inside the grid, off walls, closed doors, deep water a
   assert.equal((canPlace(m, 'ogre', 'large', [7, 3]) as { reason: string }).reason, 'That’s off the map');
   assert.equal((canPlace(m, 'ari', 'medium', [1.5, 2] as never) as { reason: string }).reason, 'That’s off the map');
   assert.deepEqual(moveToken(m, 'ari', [2, 2]).tokens[0]!.at, [2, 2]);
-  assert.deepEqual(moveToken(m, 'ari', [3, 0]).tokens[0]!.at, [3, 0], 'a move goes anywhere on the board: the DM rules on it');
+  assert.throws(() => moveToken(m, 'ari', [3, 0]), /solid/, 'not into a closed door');
+  assert.throws(() => moveToken(m, 'ari', [0, 0]), /solid/, 'or a wall');
+  assert.deepEqual(moveToken(m, 'ari', [5, 3]).tokens[0]!.at, [5, 3], 'deep water is the DM’s call: swimming');
   assert.deepEqual(moveToken(m, 'ari', [7, 2]).tokens[0]!.at, [7, 2], 'onto someone too');
   assert.throws(() => moveToken(m, 'ari', [8, 2]), /off the map/);
   assert.throws(() => moveToken(m, 'nobody', [2, 2]), /isn’t on the map/);
@@ -120,7 +122,7 @@ test('the tracker moves tokens, places combatants, works doors and terrain, and 
   let s = fight();
   s = applyAction(s, { type: 'move', token: 'ari', at: [2, 2] }, deps);
   assert.deepEqual(s.map!.tokens[0]!.at, [2, 2]);
-  assert.deepEqual(applyAction(s, { type: 'move', token: 'ari', at: [0, 0] }, deps).map!.tokens[0]!.at, [0, 0], 'into a wall, if the DM says so');
+  assert.throws(() => applyAction(s, { type: 'move', token: 'ari', at: [0, 0] }, deps), /solid/, 'never into a wall');
   s = applyAction(s, { type: 'place', id: 'bob', at: [2, 2] }, deps);
   assert.equal(s.combatants[2]!.tokenId, 'bob');
   assert.deepEqual(s.map!.tokens.find((t) => t.id === 'bob')!.at, [1, 1], 'next to Ari');
@@ -172,4 +174,43 @@ test('in a fight, the board counts how far each token has moved this turn, and p
   assert.equal(s.moved!.ari, undefined, 'a new turn for Ari');
   assert.equal(s.moved!.bob!.feet, 10);
   assert.equal(playerView(s, 'bob').moved.ogre, undefined, 'never a hidden token');
+});
+
+test('pillars, statues, trees and walls are solid; crates, barrels, chests and tables are climbed onto', () => {
+  const m = readMap({
+    v: 1,
+    width: 8,
+    height: 3,
+    terrain: [
+      { kind: 'object', asset: 'pillar', cells: [[1, 1]] },
+      { kind: 'object', label: 'Statue of Bane', cells: [[2, 1]] },
+      { kind: 'object', asset: 'chest', cells: [[3, 1]] },
+      { kind: 'object', label: 'Long table', cells: [[4, 1]] },
+      { kind: 'cover', cover: 'half', asset: 'crates', cells: [[5, 1]] },
+      { kind: 'door', cells: [[6, 1]], state: 'open' },
+      { kind: 'wall', cells: [[6, 0], [6, 1], [6, 2]] },
+    ],
+    tokens: [{ id: 'ari', name: 'Ari', kind: 'pc', size: 'medium', at: [0, 0] }],
+    notes: [],
+  })!;
+  for (const at of [[1, 1], [2, 1], [6, 0]] as const) assert.throws(() => moveToken(m, 'ari', [at[0], at[1]]), /solid/, `${at}`);
+  for (const at of [[3, 1], [4, 1], [5, 1], [6, 1]] as const) assert.deepEqual(moveToken(m, 'ari', [at[0], at[1]]).tokens[0]!.at, at, `${at}`);
+  assert.equal(solidAt(m, 'large', [0, 0]), true, 'a large creature reaching into the pillar');
+  assert.equal(solidAt(m, 'medium', [6, 1]), false, 'an open door is a way through its wall');
+});
+
+test('in a fight, the turn’s walk is kept as a trail (around walls), and players see whose it is', () => {
+  let s = fight();
+  for (const id of ['ari', 'ogre', 'bob']) s = applyAction(s, { type: 'initiative', id, value: id === 'ari' ? 20 : id === 'ogre' ? 15 : 10 }, deps);
+  s = applyAction(s, { type: 'begin' }, deps);
+  s = applyAction(s, { type: 'move', token: 'ari', at: [3, 2] }, deps);
+  s = applyAction(s, { type: 'move', token: 'ari', at: [4, 3] }, deps);
+  assert.deepEqual(s.moved!.ari!.path, [[1, 2], [2, 2], [3, 2], [4, 3]], 'square by square, both moves');
+  assert.deepEqual(playerView(s, 'ari').trail, { token: 'ari', cells: [[1, 2], [2, 2], [3, 2], [4, 3]] });
+  s = applyAction(s, { type: 'move', token: 'ari', at: [1, 2] }, deps);
+  assert.deepEqual(s.moved!.ari!.path, [[1, 2]], 'back where it started: a fresh trail');
+  assert.equal(playerView(s, 'ari').trail, null, 'nothing to draw');
+  s = applyAction(s, { type: 'move', token: 'ari', at: [2, 2] }, deps);
+  s = applyAction(s, { type: 'next' }, deps);
+  assert.equal(playerView(s, 'ari').trail, null, 'the ogre’s turn, and it hasn’t moved (nor is it seen)');
 });

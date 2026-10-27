@@ -546,7 +546,7 @@ export interface EncounterState {
    * During a fight: how far each token has moved since its creature's turn started, and from
    * where. Shown to help the DM rule, never enforced.
    */
-  moved?: Record<string, { from: Cell; feet: number }>;
+  moved?: Record<string, { from: Cell; feet: number; /** The squares walked this turn, from where it started. */ path?: Cell[] }>;
 }
 
 // --- Dungeons (ReesMcD/dnd-wiki#106) -------------------------------------------------------------
@@ -828,6 +828,8 @@ export interface PlayerView {
   rolls: EncounterRoll[];
   /** During a fight: feet each visible token has moved since its turn started. */
   moved: Record<string, number>;
+  /** Whose turn it is: the squares their token has walked this turn (from where it started), when it moved. */
+  trail: { token: string; cells: Cell[] } | null;
   /** Visible token id → its paper mini (made on the Minis page, or picked from its name and stat block). */
   minis: Record<string, MiniSpec>;
 }

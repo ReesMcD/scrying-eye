@@ -121,3 +121,24 @@ test('a boulder used as cover stands as a rock, not a crate', () => {
   assert.equal(scene.boxes.filter((b) => b.part === 'cover').length, 0);
   assert.equal(scene.props.filter((p) => p.kind === 'rock').length, 1);
 });
+
+test('a mini climbs onto a crate or a table and stands on top; a pillar has nothing to stand on', () => {
+  const scene = buildScene({
+    v: 1,
+    width: 4,
+    height: 2,
+    terrain: [
+      { kind: 'cover', cover: 'half', asset: 'crates', cells: [[0, 0]] },
+      { kind: 'object', label: 'Long table', cells: [[1, 0]] },
+      { kind: 'object', asset: 'pillar', cells: [[2, 0]] },
+    ],
+    tokens: [],
+    notes: [],
+  });
+  const crate = scene.boxes.find((b) => b.part === 'cover')!;
+  assert.equal(figureOf(scene, { id: 'a', size: 'medium' }, [0, 0]).y, crate.y + crate.h);
+  assert.ok(figureOf(scene, { id: 'a', size: 'medium' }, [1, 0]).y > 0, 'on the table');
+  assert.equal(scene.tops.has('2,0'), false);
+  assert.equal(figureOf(scene, { id: 'a', size: 'medium' }, [3, 1]).y, 0, 'on the floor');
+});
+

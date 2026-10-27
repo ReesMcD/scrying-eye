@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { onBoard, SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
+import { SIZE_SQUARES, tokenAt, type Cell, type MapToken, type TerrainKind } from '../../../src/shared/battlemap';
 import { moveGuide } from './moveGuide';
+import { dropAllowed, PENDING_MS, pendingMove, settled, shownAt, type PendingMove } from './pendingMove';
 import { leanFor, miniCard } from './standee';
 import { miniForCreature } from '../../../src/shared/minis';
 import { buildScene, cellAt, figureOf, sceneKey, type BoxPart, type MapScene } from '../../../src/shared/mapScene';
@@ -9,7 +10,7 @@ import { kitPlan } from '../../../src/shared/kitPlan';
 import { buildKit, kitModels, loadKit } from './kit';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { MapViewProps, TokenInfo } from './BattleMapView';
-import { initials, label, paintFog, paintGrid, paintOverlays, paintTerrain, palette, picture, type Palette } from './paint';
+import { initials, label, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, picture, type Palette } from './paint';
 
 /**
  * The 3D battle map (#53), drawn with three.js. The floor is the 2D map painted from above (ground,
@@ -72,6 +73,7 @@ export class MapEngine3d {
   private builtKey = '';
   private floorKey = '';
   private drag: Drag | null = null;
+  private pending: PendingMove | null = null;
   private down: { x: number; y: number; pointer: number } | null = null;
   private frame = 0;
   private animation = 0;
@@ -504,8 +506,9 @@ export class MapEngine3d {
 
   /** The floor picture: the 2D map without what's built in 3D, repainted when anything on it changes. */
   private paintFloor(): void {
-    const { map, art, fog, overlays, showNotes } = this.props();
-    const key = JSON.stringify([this.builtKey, this.kitFloor, fog ? [...fog.revealed].join(';') : null, fog?.solid, overlays, art?.ids.map((id) => !!picture(id)), showNotes, this.colors]);
+    const { map, art, fog, overlays, showNotes, trail } = this.props();
+    const walker = trail ? map.tokens.find((t) => t.id === trail.token) : undefined;
+    const key = JSON.stringify([this.builtKey, this.kitFloor, fog ? [...fog.revealed].join(';') : null, fog?.solid, overlays, walker && trail, art?.ids.map((id) => !!picture(id)), showNotes, this.colors]);
     if (key === this.floorKey) return;
     this.floorKey = key;
     // Up to 48 px a square, within a texture a phone can hold (an 80-square map at 4096 px is 64 MB).
@@ -538,6 +541,7 @@ export class MapEngine3d {
     }
     if (fog) paintFog(ctx, map, s, fog, this.colors);
     paintOverlays(ctx, overlays ?? [], s, this.colors);
+    if (trail && walker) paintRoute(ctx, trail.cells, walker.size, s, this.colors.accent, 'trail');
     this.floorTexture.needsUpdate = true;
   }
 
@@ -566,6 +570,8 @@ export class MapEngine3d {
   private syncFigures(): void {
     const { map, info, selected } = this.props();
     if (!this.model) return;
+    const now = Date.now();
+    if (this.pending && settled(map, this.pending, now)) this.pending = null;
     const seen = new Set<string>();
     for (const t of map.tokens) {
       seen.add(t.id);
@@ -582,7 +588,7 @@ export class MapEngine3d {
         this.figures.set(t.id, fig);
         this.world.add(fig.group);
       }
-      const at = this.drag?.token.id === t.id && this.drag.moved ? this.drag.to : t.at;
+      const at = this.drag?.token.id === t.id && this.drag.moved ? this.drag.to : shownAt(t, this.pending, now);
       const f = figureOf(this.model, t, at);
       fig.group.position.set(f.x, f.y, f.z);
       fig.turnRing.visible = !!ti?.current;
@@ -775,7 +781,17 @@ export class MapEngine3d {
       this.hideGuide();
       const props = this.props();
       if (d.moved) {
-        if ((d.to[0] !== d.from[0] || d.to[1] !== d.from[1]) && onBoard(props.map, d.token.size, d.to)) props.onMove(d.token.id, d.to);
+        // Into something solid or off the board, it goes back. Otherwise it stays where it landed
+        // while the move goes to the server, rather than flashing back to where it started.
+        if (dropAllowed(props.map, d.token, d.from, d.to)) {
+          this.pending = pendingMove(d.token.id, d.from, d.to, Date.now());
+          window.setTimeout(() => {
+            if (this.disposed) return;
+            this.syncFigures();
+            this.render();
+          }, PENDING_MS + 50);
+          props.onMove(d.token.id, d.to);
+        }
       } else props.onTap?.(d.token.at, d.token);
       this.syncFigures();
       this.render();

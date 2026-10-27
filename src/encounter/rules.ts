@@ -1,6 +1,6 @@
 import { srdStatBlock } from './srdMonsters.js';
 import { blankMap, cellsOf, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken, type TokenSize } from '../shared/battlemap.js';
-import { pathFeet } from '../shared/tableAids.js';
+import { pathFeet, pathRoute } from '../shared/tableAids.js';
 import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
 import { applyDungeonAction } from './dungeon.js';
@@ -502,12 +502,21 @@ function startTurn(s: EncounterState, deps: RuleDeps) {
   if (token && s.moved) delete s.moved[token];
 }
 
-/** Adds a move to the token's count this turn; back where its turn started, the count is 0. */
+/**
+ * Adds a move to the token's count and trail this turn (the short way round, as walked); back where
+ * its turn started, both start again.
+ */
 function trackMove(s: EncounterState, token: MapToken, to: Cell) {
   const moved = (s.moved ??= {});
-  const so = moved[token.id] ?? { from: token.at, feet: 0 };
+  const so = moved[token.id] ?? { from: token.at, feet: 0, path: [token.at] };
   const back = so.from[0] === to[0] && so.from[1] === to[1];
-  moved[token.id] = { from: so.from, feet: back ? 0 : so.feet + pathFeet(s.map!, token.size, token.at, to) };
+  if (back) {
+    moved[token.id] = { from: so.from, feet: 0, path: [so.from] };
+    return;
+  }
+  const route = pathRoute(s.map!, token.size, token.at, to);
+  const feet = pathFeet(s.map!, token.size, token.at, to);
+  moved[token.id] = { from: so.from, feet: so.feet + feet, path: [...(so.path ?? [so.from]), ...route.slice(1)] };
 }
 
 /** Moves the turn forward (1) or back (-1), wrapping into the next or previous round. */

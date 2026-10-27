@@ -1,4 +1,4 @@
-import { cellsOf, type BattleMap, type Cell, type Terrain, type TerrainKind } from '../../../src/shared/battlemap';
+import { cellsOf, SIZE_SQUARES, type BattleMap, type Cell, type Terrain, type TerrainKind, type TokenSize } from '../../../src/shared/battlemap';
 import type { ArtPlan } from '../../../src/shared/types';
 
 /**
@@ -163,6 +163,35 @@ export function paintOverlays(ctx: CanvasRenderingContext2D, overlays: readonly 
       if (at) label(ctx, o.label, at[0] * s, at[1] * s - 14, colors);
     }
   }
+}
+
+/**
+ * A walk across the map through the middle of each square the token filled: the trail it left
+ * this turn (dots), or the way a drag would go (dashes).
+ */
+export function paintRoute(ctx: CanvasRenderingContext2D, cells: readonly Cell[], size: TokenSize, s: number, color: string, style: 'trail' | 'drag') {
+  if (cells.length < 2) return;
+  const half = (SIZE_SQUARES[size] * s) / 2;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = style === 'trail' ? Math.max(3, s * 0.13) : 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = style === 'trail' ? 0.85 : 1;
+  ctx.setLineDash(style === 'trail' ? [1, Math.max(6, s * 0.28)] : [6, 4]);
+  ctx.beginPath();
+  cells.forEach(([x, y], i) => (i ? ctx.lineTo(x * s + half, y * s + half) : ctx.moveTo(x * s + half, y * s + half)));
+  ctx.stroke();
+  if (style === 'trail') {
+    // Where it started: a ring, so the trail reads as "from here".
+    ctx.setLineDash([]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cells[0]![0] * s + half, cells[0]![1] * s + half, Math.max(3, s * 0.16), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 export type Palette = Record<'surface' | 'text' | 'muted' | 'accent' | 'good' | 'warn' | 'bad' | 'grid' | 'ground' | 'fog', string>;
