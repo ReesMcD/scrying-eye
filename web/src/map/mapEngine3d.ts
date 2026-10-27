@@ -817,8 +817,30 @@ export class MapEngine3d {
     const distance = this.camera.position.distanceTo(this.controls.target);
     const pxPerSquare = this.el.clientHeight / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2));
     const roomy = pxPerSquare >= TAGS_FROM_PX;
-    const { info, selected } = this.props();
-    for (const [id, fig] of this.figures) fig.tag.visible = roomy || !!info[id]?.current || !!info[id]?.mine || selected === id;
+    const { info, selected, map } = this.props();
+    const kind = new Map(map.tokens.map((t) => [t.id, t.kind]));
+    const wanted = [...this.figures].filter(([id]) => roomy || !!info[id]?.current || !!info[id]?.mine || selected === id);
+    for (const [, fig] of this.figures) fig.tag.visible = false;
+    // Tags that would overlap on screen take turns: whose turn it is, then the selected, mine and the
+    // party; the rest show when there's room (zoom in, or turn the camera).
+    const rank = (id: string) => (info[id]?.current ? 0 : selected === id ? 1 : info[id]?.mine ? 2 : kind.get(id) === 'pc' ? 3 : 4);
+    wanted.sort(([a], [b]) => rank(a) - rank(b));
+    const placed: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    const w = this.el.clientWidth;
+    const h = this.el.clientHeight;
+    const pxPerUnit = (this.camera.projectionMatrix.elements[5]! * h) / 2;
+    const at = new THREE.Vector3();
+    for (const [, fig] of wanted) {
+      fig.tag.getWorldPosition(at).project(this.camera);
+      const height = fig.tag.scale.y * pxPerUnit;
+      const width = fig.tag.scale.x * pxPerUnit;
+      const x = ((at.x + 1) / 2) * w;
+      const bottom = ((1 - at.y) / 2) * h;
+      const box = { left: x - width / 2, right: x + width / 2, top: bottom - height, bottom };
+      if (placed.some((p) => box.left < p.right + 2 && box.right > p.left - 2 && box.top < p.bottom + 1 && box.bottom > p.top - 1)) continue;
+      placed.push(box);
+      fig.tag.visible = true;
+    }
   }
 
   setLabel(text: string): void {

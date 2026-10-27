@@ -80,7 +80,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-
 .brand svg { color: var(--accent); flex: none; }
 .rec-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--rec) 15%, transparent); color: var(--rec); font-size: 0.75rem; font-weight: 700; }
 .rec-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--rec); animation: pulse 1.4s ease-in-out infinite; }
-.tabbar { position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 8px 30px rgb(0 0 0 / 25%); z-index: 10; }
+.tabbar { position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 8px 30px rgb(0 0 0 / 25%); z-index: 10; }
 .tabbar a { min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; color: var(--muted); font-weight: 600; font-size: 0.75rem; }
 .tabbar a.on { color: var(--text); background: var(--surface-2); }
 .tabbar a.on svg { color: var(--accent); }
@@ -436,3 +436,55 @@ input.narrow { width: 64px; display: inline-block; }
 .quick-count { display: flex; align-items: center; gap: 8px; flex: none; }
 .quick-count .tabular { min-width: 20px; text-align: center; font-weight: 700; }
 .quick-count button.icon { min-width: 40px; min-height: 40px; }
+
+/* The live encounter (LiveEncounter.tsx): the map fills the page; controls float on it. */
+.content:has(> .live-page) { max-width: none; padding: 0; }
+.live-page { position: relative; height: calc(100dvh - 150px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+@media (min-width: 900px) { .live-page { height: 100dvh; } }
+.live { position: relative; height: 100%; overflow: hidden; background: var(--bg); }
+.live .live-map { position: absolute; inset: 0; }
+.live .map-view, .live .battle-map { height: 100%; }
+.live .battle-map { border: 0; border-radius: 0; }
+.live .map-view-switch { top: auto; bottom: 16px; left: 12px; }
+.live-pill, .live-actions > button, .live-chip, .live-turns, .live-show, .live-hint { background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(6px); }
+.live-top { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: flex-start; z-index: 5; pointer-events: none; }
+.live-top > * { pointer-events: auto; }
+.live-pill { display: flex; flex-direction: column; gap: 2px; padding: 8px 14px; border-radius: 14px; border: 1px solid var(--border); min-width: 0; }
+.live-title strong { font-size: 1.05rem; }
+.live-title .muted { font-size: 0.85rem; }
+.live-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.live-actions > button { min-height: 38px; padding: 6px 12px; }
+.live-actions > button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.live-show { margin-left: auto; min-height: 34px; padding: 4px 12px; opacity: 0.45; }
+.live-show:hover, .live-show:focus-visible { opacity: 1; }
+.live-order { position: absolute; left: 12px; top: 84px; bottom: 76px; width: 210px; overflow-y: auto; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; z-index: 4; }
+.live-chip { width: 100%; min-height: 0; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 8px; padding: 7px 12px; border-radius: 12px; border: 1px solid var(--border); text-align: left; font-weight: 600; }
+.live-chip.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.live-chip.faded { opacity: 0.6; }
+.live-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-chip-conditions { grid-column: 2; font-size: 0.75rem; font-weight: 500; color: var(--warn); }
+.live-turns { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 8px; border-radius: 16px; border: 1px solid var(--border); z-index: 5; }
+.live-turns button { min-height: 42px; }
+.live-turns .primary { min-width: 150px; }
+.live-round { font-weight: 800; color: var(--gold); padding: 0 6px; white-space: nowrap; }
+.live-tools { position: absolute; top: 70px; right: 12px; z-index: 6; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 170px); overflow: auto; display: grid; gap: 8px; padding: 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: 0 10px 30px rgb(0 0 0 / 25%); }
+.live-tools .map-tools { margin: 0; }
+.live-hint { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 5; margin: 0; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); max-width: min(640px, calc(100% - 24px)); text-align: center; }
+.live-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); overflow-y: auto; z-index: 7; padding: 14px 16px 24px; background: var(--bg); border-left: 1px solid var(--border); box-shadow: -12px 0 30px rgb(0 0 0 / 25%); }
+.live-drawer-head { position: sticky; top: -14px; background: var(--bg); padding: 4px 0 10px; z-index: 1; }
+.live-drawer h2 { font-size: 1rem; margin: 18px 0 8px; }
+.live-error { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 8; max-width: calc(100% - 24px); }
+.live-no-map { position: relative; z-index: 2; max-width: 520px; margin: 90px auto 0; }
+.live-clean .live-turns { opacity: 0.85; }
+@media (max-width: 640px) {
+  .live-order { top: auto; bottom: 132px; left: 12px; right: 12px; width: auto; flex-direction: row; overflow-x: auto; }
+  .live-actions > button[title^='For sharing'] { display: none; }
+  .live-order li { flex: none; }
+  .live-chip { width: auto; }
+  .live-actions > button { padding: 6px 10px; }
+  .live-turns { width: calc(100% - 24px); justify-content: center; }
+  .live-turns .primary { min-width: 0; flex: 1; }
+  .live .map-view-switch { bottom: 80px; }
+  .live .battle-map-zoom { bottom: 132px; }
+  .live-order { right: 64px; }
+}

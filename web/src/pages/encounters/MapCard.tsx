@@ -16,15 +16,15 @@ type Tool = 'move' | 'doors' | 'difficult' | 'fog';
 
 const NEXT_DOOR_STATE = { open: 'closed', closed: 'locked', locked: 'open' } as const;
 
-/** The DM's battle map, or a way to add a blank one. */
-export function MapCard({ state, act, onSelect }: { state: EncounterState; act: Act; onSelect: (combatantId: string) => void }) {
-  return state.map ? <MapBoard state={state} map={state.map} act={act} onSelect={onSelect} /> : <NoMap act={act} />;
+/** The DM's battle map, filling the live encounter page; or a way to add a blank one. `showTools`: the map tools panel. */
+export function MapCard({ state, act, onSelect, showTools }: { state: EncounterState; act: Act; onSelect: (combatantId: string) => void; showTools: boolean }) {
+  return state.map ? <MapBoard state={state} map={state.map} act={act} onSelect={onSelect} showTools={showTools} /> : <NoMap act={act} />;
 }
 
 function NoMap({ act }: { act: Act }) {
   const [size, setSize] = useState({ width: '20', height: '15' });
   return (
-      <details className="card">
+      <details className="card live-no-map" open>
         <summary>
           <strong>Battle map</strong> <span className="muted small">none yet</span>
         </summary>
@@ -48,7 +48,7 @@ function NoMap({ act }: { act: Act }) {
  * Move any token, work doors (and find secret ones), mark difficult ground, reveal the fog, place
  * spell areas and measure, and put combatants on the map.
  */
-function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: BattleMap; act: Act; onSelect: (combatantId: string) => void }) {
+function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterState; map: BattleMap; act: Act; onSelect: (combatantId: string) => void; showTools: boolean }) {
   const [tool, setTool] = useState<Tool>('move');
   const [placing, setPlacing] = useState<string | null>(null);
   const art = useArtPlan(map, () => api<ArtPlan | null>('/encounter/art'));
@@ -118,7 +118,9 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
   };
 
   return (
-    <section className="card" aria-label="Battle map">
+    <section className="live-map" aria-label="Battle map">
+      {(showTools || placing) && (
+      <div className="live-tools">
       <div className="map-tools">
         <Segmented
           value={tool}
@@ -167,6 +169,13 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
         </div>
       )}
       {area.controls}
+      {map.notes.length > 0 && (
+        <p className="muted small" style={{ margin: 0 }}>
+          Map notes (yellow dots): {map.notes.map((n) => n.text).join(' · ')}
+        </p>
+      )}
+      </div>
+      )}
       <MapView
         map={map}
         info={info}
@@ -182,7 +191,8 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
         loadArt={(id) => apiBlob(`/art/${encodeURIComponent(id)}`)}
         label={`Battle map, ${map.width} by ${map.height} squares`}
       />
-      <p className="muted small map-hint">
+      {(placingName || area.active || tool !== 'move') && (
+      <p className="live-hint small">
         {placingName
           ? `Tap a square to put ${placingName} there.`
           : area.active
@@ -196,8 +206,8 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
             : tool === 'difficult'
               ? 'Tap a square to mark or clear difficult terrain.'
               : 'Drag a token to move it; tap one for its details. Pinch or scroll to zoom.'}
-        {map.notes.length > 0 && tool === 'move' && !placing && ` ${map.notes.length} note${map.notes.length === 1 ? '' : 's'} (yellow dots): ${map.notes.map((n) => n.text).join(' · ')}`}
       </p>
+      )}
     </section>
   );
 }

@@ -6,75 +6,29 @@ import { Badge, Toggle } from '../../ui';
 import { CombatantPanel } from './CombatantPanel';
 import { DungeonPanel } from './DungeonPanel';
 import { JoinPanel } from './JoinPanel';
-import { MapCard } from './MapCard';
 
 type Act = (action: EncounterAction) => Promise<void>;
 
-/** The DM's tracker: the board, the turn order to click through, and the round. No HP, AC or initiative. */
-export function Tracker({ state, act, onEnd, assistant }: { state: EncounterState; act: Act; onEnd: () => Promise<void>; assistant: boolean }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const [confirmEnd, setConfirmEnd] = useState(false);
+/**
+ * The live encounter's details drawer: the dungeon's rooms, the players' link, the turn order to
+ * arrange (and each piece's conditions and stat block), adding pieces, dice, notes and the log.
+ * The map and the turn controls are the live page itself (LiveEncounter).
+ */
+export function EncounterDetails({ state, act, assistant, open, setOpen }: { state: EncounterState; act: Act; assistant: boolean; open: string | null; setOpen: (id: string | null) => void }) {
   const byId = new Map(state.combatants.map((c) => [c.id, c]));
   const ordered = state.order.map((id) => byId.get(id)).filter((c): c is Combatant => !!c);
   const running = state.status === 'running';
-  const exploring = state.status === 'exploring';
-  const fighting = !!state.dungeon?.fight;
   const current = state.turn ? byId.get(state.turn) : undefined;
 
   return (
-    <div>
-      <div className="row spread tracker-head">
-        <div>
-          <h1>{state.title}</h1>
-          <div className="muted small">{exploring ? 'Exploring: move the party on the map; open a room for what’s there' : running ? `Round ${state.round} · ${current?.name ?? ''}’s turn` : 'Setting up: put them in turn order, then start'}</div>
-        </div>
-        <button className="danger" onClick={() => (confirmEnd ? void onEnd() : setConfirmEnd(true))} onBlur={() => setConfirmEnd(false)}>
-          {confirmEnd ? 'Tap again to end' : state.dungeon ? 'Leave the dungeon' : 'End encounter'}
-        </button>
-      </div>
-
+    <div className="encounter-details">
       {state.dungeon && <DungeonPanel state={state} act={act} />}
-
-      {!exploring && (
-      <div className="card tracker-controls">
-        {fighting && (
-          <button className="end-fight" onClick={() => void act({ type: 'endFight' })} title="Back to exploring; the fallen leave the map">
-            End fight
-          </button>
-        )}
-        {running ? (
-          <div className="row">
-            <span className="round-count tabular" aria-label={`Round ${state.round}`}>
-              Round {state.round}
-            </span>
-            <button onClick={() => void act({ type: 'previous' })}>Previous</button>
-            <button className="primary next-turn" onClick={() => void act({ type: 'next' })}>
-              Next turn
-            </button>
-          </div>
-        ) : (
-          <div className="row">
-            <button className="primary" onClick={() => void act({ type: 'begin' })} disabled={!state.combatants.length}>
-              Start round 1
-            </button>
-          </div>
-        )}
-      </div>
-      )}
 
       {assistant && running && current && current.kind !== 'pc' && <TurnIdea key={`${state.round}-${current.id}`} combatant={current} />}
 
       <JoinPanel state={state} />
 
-      <MapCard
-        state={state}
-        act={act}
-        onSelect={(id) => {
-          setOpen(id);
-          document.getElementById(`combatant-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }}
-      />
-
+      <h2>Turn order</h2>
       <ol className="initiative" aria-label="Turn order">
         {ordered.map((c, i) => (
           <li key={c.id} id={`combatant-${c.id}`} className={`combatant ${c.id === state.turn ? 'current' : ''}`}>
