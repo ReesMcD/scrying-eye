@@ -1,4 +1,4 @@
-import { cellsOf, climbable, solid, footprint, SIZE_SQUARES, type BattleMap, type Cell, type TokenSize } from './battlemap.js';
+import { cellsOf, crossings, crossingSquares, crossingText, footprint, SIZE_SQUARES, type BattleMap, type Cell, type TokenSize } from './battlemap.js';
 
 /**
  * Table aids: what the board works out to help the DM rule, never to refuse a move. How far a
@@ -7,38 +7,55 @@ import { cellsOf, climbable, solid, footprint, SIZE_SQUARES, type BattleMap, typ
 
 const key = (x: number, y: number) => `${x},${y}`;
 
-/** What a step onto a square costs, in 5-ft squares: 1, 2 (difficult, swimming), or no way through. */
+/** What a step onto a square costs, in 5-ft squares: 1, more for each obstacle's cheapest way past, or no way through. */
 function stepCosts(map: BattleMap): (x: number, y: number) => number {
-  const walls = new Set<string>();
-  const slow = new Set<string>();
+  const costs = new Map<string, number>();
   for (const t of map.terrain) {
+    const ways = crossings(t);
+    if (!ways.length) continue;
     // Walls, closed doors and solid objects can't be walked through; difficult ground, water and
-    // climbing onto crates or tables cost double.
-    const wall = solid(t);
-    const hard = t.kind === 'difficult' || t.kind === 'water' || climbable(t);
-    if (!wall && !hard) continue;
-    for (const [x, y] of cellsOf(t, map.width, map.height)) (wall ? walls : slow).add(key(x, y));
+    // climbing onto crates or tables cost double (or what the map says).
+    const cost = Math.min(...ways.map(crossingSquares));
+    for (const [x, y] of cellsOf(t, map.width, map.height)) costs.set(key(x, y), Math.max(costs.get(key(x, y)) ?? 1, cost));
   }
   // An open door is a way through the wall it sits in.
-  for (const t of map.terrain) if (t.kind === 'door' && t.state === 'open') for (const [x, y] of cellsOf(t, map.width, map.height)) walls.delete(key(x, y));
-  return (x, y) => (walls.has(key(x, y)) ? Infinity : slow.has(key(x, y)) ? 2 : 1);
+  for (const t of map.terrain) if (t.kind === 'door' && t.state === 'open') for (const [x, y] of cellsOf(t, map.width, map.height)) costs.delete(key(x, y));
+  return (x, y) => costs.get(key(x, y)) ?? 1;
+}
+
+/**
+ * What a walked route takes on the way, in words: the check for each obstacle it crosses
+ * ("climb the boulder (DC 10 Athletics)"), once each. Plain difficult ground needs no words.
+ */
+export function routeCrossings(map: BattleMap, size: TokenSize, route: Cell[]): string[] {
+  const walked = new Set(route.slice(1).flatMap((at) => footprint(at, size)).map(([x, y]) => key(x, y)));
+  const out: string[] = [];
+  for (const t of map.terrain) {
+    // The first way the map gives (a crate: climb it), short enough to read beside a dragged token.
+    const way = crossings(t).find((w) => crossingSquares(w) !== Infinity && w.how !== 'difficult');
+    if (!way || !cellsOf(t, map.width, map.height).some(([x, y]) => walked.has(key(x, y)))) continue;
+    const text = crossingText(t, way);
+    if (!out.includes(text)) out.push(text);
+  }
+  return out;
 }
 
 /**
  * Feet walked from one square to another, the short way round (2024 rules): 5 ft a square,
- * diagonals too, double through difficult terrain, water or climbing, around walls, closed doors
- * and solid objects. With no way round (a jump, a teleport, a squeeze through), it's the straight line.
+ * diagonals too, double through difficult terrain, water or climbing (or what an obstacle says it
+ * costs), around walls, closed doors and solid objects. With no way round (a jump, a teleport, a squeeze through), it's the straight line.
  */
 export function pathFeet(map: BattleMap, size: TokenSize, from: Cell, to: Cell): number {
-  return walk(map, size, from, to).feet;
+  return pathWalk(map, size, from, to).feet;
 }
 
 /** The squares walked from one square to another (both included), the same short way round as pathFeet. */
 export function pathRoute(map: BattleMap, size: TokenSize, from: Cell, to: Cell): Cell[] {
-  return walk(map, size, from, to).route;
+  return pathWalk(map, size, from, to).route;
 }
 
-function walk(map: BattleMap, size: TokenSize, from: Cell, to: Cell): { feet: number; route: Cell[] } {
+/** Both at once: the feet walked and the squares, the same short way round. */
+export function pathWalk(map: BattleMap, size: TokenSize, from: Cell, to: Cell): { feet: number; route: Cell[] } {
   const straight = { feet: Math.max(Math.abs(from[0] - to[0]), Math.abs(from[1] - to[1])) * 5, route: [from, to] as Cell[] };
   if (from[0] === to[0] && from[1] === to[1]) return { feet: 0, route: [from] };
   const n = SIZE_SQUARES[size];
@@ -51,7 +68,7 @@ function walk(map: BattleMap, size: TokenSize, from: Cell, to: Cell): { feet: nu
   const enter = (x: number, y: number) => Math.max(...footprint([x, y], size).map(([cx, cy]) => cost(cx, cy)));
   const best = new Float64Array(w * h).fill(Infinity);
   const came = new Int32Array(w * h).fill(-1);
-  // Steps cost 1 or 2, so a list per total cost is a priority queue.
+  // Steps cost a whole number of squares, so a list per total cost is a priority queue.
   const buckets: number[][] = [[from[1] * w + from[0]]];
   best[from[1] * w + from[0]] = 0;
   const target = to[1] * w + to[0];

@@ -1,6 +1,6 @@
 import { srdStatBlock } from './srdMonsters.js';
-import { blankMap, cellsOf, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken, type TokenSize } from '../shared/battlemap.js';
-import { pathFeet, pathRoute } from '../shared/tableAids.js';
+import { blankMap, breakObstacle, cellsOf, featureName, findSecretDoor, footprint, MapError, moveToken, placeToken, setDifficult, setDoor, type BattleMap, type Cell, type MapToken, type TokenSize } from '../shared/battlemap.js';
+import { pathWalk } from '../shared/tableAids.js';
 import { cellKey, readTemplate, roomAt, roomCells, roomInView, visibleFrom } from '../shared/mapSight.js';
 import { DiceError, rollDice, secureDie, type RandomInt } from '../shared/dice.js';
 import { applyDungeonAction } from './dungeon.js';
@@ -308,6 +308,12 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
     case 'difficult':
       s.map = onMap(s, (m) => setDifficult(m, action.at, action.on));
       break;
+    case 'break': {
+      const feature = s.map?.terrain[action.index];
+      s.map = onMap(s, (m) => breakObstacle(m, action.index, action.at));
+      if (feature) log(`Broke ${featureName(feature)}`);
+      break;
+    }
     case 'newMap': {
       if (s.map) throw new EncounterError('This encounter already has a map');
       s.map = asEncounterError(() => blankMap(action.width, action.height));
@@ -408,7 +414,7 @@ export function applyAction(state: EncounterState, action: EncounterAction, deps
       throw new EncounterError('Unknown action');
   }
   // Fog that follows the party: reveal what their tokens can see after anything that changes it.
-  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'secretDoor', 'fog', 'reveal', 'stairs'].includes(action.type)) revealPartySight(s, action.type === 'move' ? action.token : undefined);
+  if (s.fog?.follow && s.map && ['move', 'place', 'door', 'break', 'secretDoor', 'fog', 'reveal', 'stairs'].includes(action.type)) revealPartySight(s, action.type === 'move' ? action.token : undefined);
   return s;
 }
 
@@ -514,8 +520,7 @@ function trackMove(s: EncounterState, token: MapToken, to: Cell) {
     moved[token.id] = { from: so.from, feet: 0, path: [so.from] };
     return;
   }
-  const route = pathRoute(s.map!, token.size, token.at, to);
-  const feet = pathFeet(s.map!, token.size, token.at, to);
+  const { feet, route } = pathWalk(s.map!, token.size, token.at, to);
   moved[token.id] = { from: so.from, feet: so.feet + feet, path: [...(so.path ?? [so.from]), ...route.slice(1)] };
 }
 

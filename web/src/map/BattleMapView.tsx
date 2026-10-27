@@ -3,7 +3,7 @@ import { cellsOf, SIZE_SQUARES, tokenAt, type BattleMap, type Cell, type MapToke
 import { pathRoute } from '../../../src/shared/tableAids';
 import { roomCells } from '../../../src/shared/mapSight';
 import type { ArtPlan, MiniSpec } from '../../../src/shared/types';
-import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, type Overlay, type Palette } from './paint';
+import { initials, label, loadPictures, paintCrossings, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, type Overlay, type Palette } from './paint';
 import { dropAllowed, PENDING_MS, pendingMove, settled, shownAt, type PendingMove } from './pendingMove';
 import { moveGuide } from './moveGuide';
 import { portrait } from './portraits';
@@ -162,6 +162,7 @@ export function BattleMapView(props: MapViewProps) {
         for (const [x, y] of cellsOf(t, map.width, map.height)) ctx.strokeRect(x * s + 3, y * s + 3, s - 6, s - 6);
         ctx.setLineDash([]);
       });
+      paintCrossings(ctx, map, s, colors);
       for (const n of map.notes) {
         ctx.fillStyle = colors.warn;
         ctx.beginPath();

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, apiBlob } from '../../api';
-import { doorsAt, isDifficult, secretDoorsAt, type BattleMap, type Cell, type MapToken } from '../../../../src/shared/battlemap';
+import { breakable, crossings, crossingText, doorsAt, featureName, isDifficult, obstaclesAt, secretDoorsAt, type BattleMap, type Cell, type MapToken } from '../../../../src/shared/battlemap';
 import { cellKey, roomAt } from '../../../../src/shared/mapSight';
 import { useAreaTool } from '../../map/AreaTool';
 import { flankedTokens, flankPieces } from '../../../../src/shared/tableAids';
@@ -51,6 +51,8 @@ function NoMap({ act }: { act: Act }) {
 function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterState; map: BattleMap; act: Act; onSelect: (combatantId: string) => void; showTools: boolean }) {
   const [tool, setTool] = useState<Tool>('move');
   const [placing, setPlacing] = useState<string | null>(null);
+  // The square of the obstacle last tapped, to say how it's crossed (by square: indexes shift).
+  const [tapped, setTapped] = useState<Cell | null>(null);
   const art = useArtPlan(map, () => api<ArtPlan | null>('/encounter/art'));
   const area = useAreaTool({
     map,
@@ -80,6 +82,7 @@ function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterSt
   const placingName = placing ? state.combatants.find((c) => c.id === placing)?.name : undefined;
 
   const onTap = (at: Cell, token: MapToken | undefined) => {
+    setTapped(null);
     if (placing) {
       void act({ type: 'place', id: placing, at }).then(() => setPlacing(null));
       return;
@@ -112,6 +115,7 @@ function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterSt
       onSelect(c.id);
       return;
     }
+    if (obstaclesAt(map, at).length) setTapped(at);
     // In a dungeon: tapping a room opens it in the room panel.
     const room = state.dungeon ? roomAt(map, at) : undefined;
     if (room && state.dungeon?.rooms.some((r) => r.key === room.id)) void act({ type: 'room', key: room.id });
@@ -176,6 +180,7 @@ function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterSt
       )}
       </div>
       )}
+      {tapped && <ObstacleCard map={map} at={tapped} act={act} onClose={() => setTapped(null)} />}
       <MapView
         map={map}
         info={info}
@@ -206,10 +211,37 @@ function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterSt
                 : 'Players see only what you reveal, or what the party can see.'
             : tool === 'difficult'
               ? 'Tap a square to mark or clear difficult terrain.'
-              : 'Drag a token to move it; tap one for its details. Pinch or scroll to zoom.'}
+              : 'Drag a token to move it; tap one for its details, or an obstacle for how it’s crossed. Pinch or scroll to zoom.'}
       </p>
       )}
     </section>
+  );
+}
+
+/** How the obstacles on a tapped square are crossed, and Break for the DM's ruling. */
+function ObstacleCard({ map, at, act, onClose }: { map: BattleMap; at: Cell; act: Act; onClose: () => void }) {
+  const here = obstaclesAt(map, at);
+  if (!here.length) return null;
+  return (
+    <div className="live-hint small obstacle-card" role="status">
+      {here.map((i) => {
+        const t = map.terrain[i]!;
+        return (
+          <div key={i} className="row">
+            <strong>{featureName(t).replace(/^./, (c) => c.toUpperCase())}:</strong>
+            <span>{crossings(t).map((w) => crossingText(t, w)).join(' or ')}</span>
+            {breakable(t) && (
+              <button type="button" className="link danger" onClick={() => void act({ type: 'break', index: i, at }).then(onClose)}>
+                {t.kind === 'door' ? 'Break it open' : 'Break'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <button type="button" className="link" onClick={onClose}>
+        Close
+      </button>
+    </div>
   );
 }
 
