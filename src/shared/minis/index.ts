@@ -1,5 +1,6 @@
 export * from './spec.js';
 export * from './style.js';
-export * from './render.js';
+export * from './styles.js';
 export * from './creatures.js';
 export * from './starters.js';
+export * from './species.js';

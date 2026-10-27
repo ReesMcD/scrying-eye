@@ -1,51 +1,7 @@
-import type { Mini, MiniSpec } from './spec.js';
-import { INK, INK_WIDTH, PALETTE, PAPER, PAPER_EDGE, proportionsOf, resolveMini } from './style.js';
-
-/**
- * A mini as an SVG: a figure drawn in flat colours with an ink outline, cut out of paper with a
- * white margin and a tab at its feet for the stand. Plain SVG with no scripts or external files,
- * so it works in a browser, on a server (sharp/librsvg) and in a Discord post.
- *
- * Card units: 120 wide, the feet at y = 200, x = 60 the middle. The view box is trimmed to the
- * figure (with whatever it holds over its head), so a dwarf's card is shorter than an elf's.
- */
-
-export interface RenderedMini {
-  svg: string;
-  /** The view box's size, in card units: the card's aspect, and its height relative to others. */
-  width: number;
-  height: number;
-}
-
-export interface RenderOptions {
-  /** A prefix for the SVG's ids, unique on the page when several minis are inlined. */
-  id?: string;
-  /** Cut out of paper (default), or just the figure. */
-  paper?: boolean;
-}
-
-const f = (n: number) => String(Math.round(n * 10) / 10);
-const CX = 60;
-const FEET = 200;
-
-/** Outlined shapes: everything a part draws goes through these, so the ink is the same everywhere. */
-const shape = {
-  poly: (points: Array<[number, number]>, fill: string) => `<polygon points="${points.map(([x, y]) => `${f(x)},${f(y)}`).join(' ')}" fill="${fill}"/>`,
-  path: (d: string, fill: string) => `<path d="${d}" fill="${fill}"/>`,
-  circle: (x: number, y: number, r: number, fill: string) => `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" fill="${fill}"/>`,
-  ellipse: (x: number, y: number, rx: number, ry: number, fill: string) => `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(ry)}" fill="${fill}"/>`,
-  rect: (x: number, y: number, w: number, h: number, fill: string, r = 1.5) => `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(r)}" fill="${fill}"/>`,
-  line: (x1: number, y1: number, x2: number, y2: number, width = INK_WIDTH, stroke = INK) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${stroke}" stroke-width="${f(width)}"/>`,
-  /** A detail line with no outline of its own (rib, belt stitch). */
-  detail: (d: string, stroke: string, width = 1.6) => `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${f(width)}"/>`,
-};
-
-/** Lighter or darker, for a highlight or a shadow side. */
-function shade(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(amount > 0 ? v + (255 - v) * amount : v * (1 + amount)))));
-  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
+import type { Mini } from '../spec.js';
+import type { Drawn } from './index.js';
+import { proportionsOf } from '../style.js';
+import { CX, f, FEET, INK, PALETTE, shade, shape } from './draw.js';
 
 /** Where everything on a humanoid hangs, from its proportions. */
 function skeletonOf(m: Mini) {
@@ -73,7 +29,12 @@ function cloakBack(m: Mini, b: Bones): string {
 
 function hairBack(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
-  if (m.hair.style === 'long' || m.hair.style === 'wild') return shape.path(`M${f(x - r * 1.05)},${f(y - r * 0.2)} Q${f(x - r * 1.25)},${f(y + r * 2.2)} ${f(x - r * 0.4)},${f(y + r * 2.4)} L${f(x + r * 0.4)},${f(y + r * 2.4)} Q${f(x + r * 1.25)},${f(y + r * 2.2)} ${f(x + r * 1.05)},${f(y - r * 0.2)} Z`, m.hair.colour);
+  const c = m.hair.colour;
+  if (m.hair.style === 'long' || m.hair.style === 'wild') return shape.path(`M${f(x - r * 1.05)},${f(y - r * 0.2)} Q${f(x - r * 1.25)},${f(y + r * 2.2)} ${f(x - r * 0.4)},${f(y + r * 2.4)} L${f(x + r * 0.4)},${f(y + r * 2.4)} Q${f(x + r * 1.25)},${f(y + r * 2.2)} ${f(x + r * 1.05)},${f(y - r * 0.2)} Z`, c);
+  if (m.headgear === 'great-helm') return '';
+  if (m.hair.style === 'bun') return shape.circle(x, y - r * 1.12, r * 0.5, c);
+  if (m.hair.style === 'ponytail') return shape.path(`M${f(x + r * 0.55)},${f(y - r * 0.85)} Q${f(x + r * 1.7)},${f(y - r * 0.6)} ${f(x + r * 1.45)},${f(y + r * 1.9)} Q${f(x + r * 1.15)},${f(y + r * 0.6)} ${f(x + r * 0.7)},${f(y - r * 0.2)} Z`, c);
+  if (m.hair.style === 'curly') return [-1, 1].map((s) => shape.circle(x + s * r * 0.95, y + r * 0.55, r * 0.42, c) + shape.circle(x + s * r * 0.75, y + r * 0.95, r * 0.36, c)).join('');
   return '';
 }
 
@@ -138,10 +99,12 @@ function arms(m: Mini, b: Bones): string {
 function head(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
   const out: string[] = [];
-  const pointy = m.ancestry === 'elf' || m.ancestry === 'goblin' || m.ancestry === 'gnome' || m.ancestry === 'tiefling';
-  if (pointy) {
-    const reach = m.ancestry === 'goblin' ? r * 1.2 : m.ancestry === 'elf' ? r * 0.9 : r * 0.55;
-    for (const s of [-1, 1]) out.push(shape.poly([[x + s * r * 0.8, y - r * 0.25], [x + s * (r * 0.8 + reach), y - r * (m.ancestry === 'goblin' ? 0.35 : 0.9)], [x + s * r * 0.85, y + r * 0.3]], m.skin));
+  const ears = m.features.ears;
+  if (ears !== 'round' && m.ancestry !== 'dragonborn' && m.ancestry !== 'skeleton') {
+    // Goblins' long ears stick out sideways; elves' sweep up.
+    const goblin = m.ancestry === 'goblin';
+    const reach = ears === 'pointed' ? r * 0.55 : goblin ? r * 1.2 : r * 0.9;
+    for (const s of [-1, 1]) out.push(shape.poly([[x + s * r * 0.8, y - r * 0.25], [x + s * (r * 0.8 + reach), y - r * (goblin && ears === 'long' ? 0.35 : 0.9)], [x + s * r * 0.85, y + r * 0.3]], m.skin));
   }
   if (m.ancestry === 'dragonborn') {
     // A long head with a snout to the right, a frill behind.
@@ -161,12 +124,51 @@ function head(m: Mini, b: Bones): string {
     out.push(shape.detail(`M${f(x - r * 0.45)},${f(y + r * 0.62)} L${f(x + r * 0.45)},${f(y + r * 0.62)} M${f(x - r * 0.2)},${f(y + r * 0.52)} l0,${f(r * 0.2)} M${f(x + r * 0.2)},${f(y + r * 0.52)} l0,${f(r * 0.2)}`, INK, 1.2));
     return out.join('');
   }
-  // Eyes; a big nose on gnomes and goblins; tusks on half-orcs.
-  out.push(shape.circle(x - r * 0.36, y - r * 0.02, Math.max(1.3, r * 0.11), INK));
-  out.push(shape.circle(x + r * 0.36, y - r * 0.02, Math.max(1.3, r * 0.11), INK));
+  out.push(markings(m, b));
+  // Eyes; a big nose on gnomes and goblins; tusks.
+  out.push(eyes(m, x, y, r));
   if (m.ancestry === 'gnome' || m.ancestry === 'goblin') out.push(shape.ellipse(x, y + r * 0.28, r * 0.22, r * 0.3, shade(m.skin, -0.12)));
-  if (m.ancestry === 'half-orc') for (const s of [-1, 1]) out.push(shape.poly([[x + s * r * 0.3, y + r * 0.62], [x + s * r * 0.42, y + r * 0.25], [x + s * r * 0.48, y + r * 0.62]], PALETTE.bone!));
+  // Tusks up from the lower jaw, with a fine outline: the full ink would swallow them.
+  const tusk = (d: string) => `<path d="${d}" fill="${PALETTE.bone}" stroke="${INK}" stroke-width="1.1"/>`;
+  if (m.features.tusks === 'small') for (const s of [-1, 1]) out.push(tusk(`M${f(x + s * r * 0.22)},${f(y + r * 0.72)} L${f(x + s * r * 0.3)},${f(y + r * 0.3)} L${f(x + s * r * 0.48)},${f(y + r * 0.72)} Z`));
+  if (m.features.tusks === 'large') for (const s of [-1, 1]) out.push(tusk(`M${f(x + s * r * 0.18)},${f(y + r * 0.76)} Q${f(x + s * r * 0.2)},${f(y + r * 0.2)} ${f(x + s * r * 0.5)},${f(y - r * 0.05)} Q${f(x + s * r * 0.44)},${f(y + r * 0.4)} ${f(x + s * r * 0.52)},${f(y + r * 0.76)} Z`));
   return out.join('');
+}
+
+/** Two ink dots; in a colour they're bigger, and shining ones get a soft light round them. */
+function eyes(m: Mini, x: number, y: number, r: number): string {
+  const { eyes: colour, glow } = m.features;
+  const plain = colour === INK && !glow;
+  const size = plain ? Math.max(1.3, r * 0.11) : Math.max(2, r * 0.16);
+  return [-1, 1]
+    .map((s) => {
+      const ex = x + s * r * 0.36;
+      const ey = y - r * 0.02;
+      const light = glow ? `<circle cx="${f(ex)}" cy="${f(ey)}" r="${f(size * 2.4)}" fill="${colour}" stroke="none" opacity="0.45"/>` : '';
+      return plain ? shape.circle(ex, ey, size, INK) : `${light}<circle cx="${f(ex)}" cy="${f(ey)}" r="${f(size)}" fill="${colour}" stroke="${INK}" stroke-width="1.2"/>`;
+    })
+    .join('');
+}
+
+/** Marks on the face: freckles, a goliath's stony patches, runes, stripes, a scar. No outline: they're on the skin. */
+function markings(m: Mini, b: Bones): string {
+  const { x, y, r } = b.head;
+  const c = m.features.markingColour;
+  const on = (d: string, width: number) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${f(width)}"/>`;
+  switch (m.features.markings) {
+    case 'freckles':
+      return [-1, 1].flatMap((s) => [[0.5, 0.28], [0.68, 0.22], [0.58, 0.42]].map(([dx, dy]) => `<circle cx="${f(x + s * r * dx!)}" cy="${f(y + r * dy!)}" r="${f(Math.max(0.8, r * 0.06))}" fill="${c}" stroke="none"/>`)).join('');
+    case 'patches':
+      return `<path d="M${f(x - r * 0.15)},${f(y - r * 0.95)} Q${f(x + r * 0.55)},${f(y - r * 0.85)} ${f(x + r * 0.62)},${f(y - r * 0.45)} Q${f(x + r * 0.2)},${f(y - r * 0.5)} ${f(x - r * 0.15)},${f(y - r * 0.95)} Z M${f(x - r * 0.9)},${f(y + r * 0.15)} Q${f(x - r * 0.62)},${f(y + r * 0.05)} ${f(x - r * 0.55)},${f(y + r * 0.45)} Q${f(x - r * 0.75)},${f(y + r * 0.62)} ${f(x - r * 0.88)},${f(y + r * 0.5)} Z" fill="${c}" stroke="none"/>`;
+    case 'runes':
+      return on(`M${f(x - r * 0.3)},${f(y - r * 0.75)} L${f(x)},${f(y - r * 0.45)} L${f(x + r * 0.3)},${f(y - r * 0.75)} M${f(x - r * 0.62)},${f(y + r * 0.22)} l0,${f(r * 0.4)} M${f(x + r * 0.62)},${f(y + r * 0.22)} l0,${f(r * 0.4)}`, 1.6);
+    case 'stripes':
+      return on([-1, 1].map((s) => `M${f(x + s * r * 0.98)},${f(y - r * 0.3)} l${f(-s * r * 0.35)},${f(r * 0.08)} M${f(x + s * r * 0.98)},${f(y + r * 0.1)} l${f(-s * r * 0.42)},${f(r * 0.04)} M${f(x + s * r * 0.9)},${f(y + r * 0.45)} l${f(-s * r * 0.3)},${f(-r * 0.02)}`).join(' '), 2);
+    case 'scar':
+      return on(`M${f(x + r * 0.15)},${f(y - r * 0.55)} L${f(x + r * 0.6)},${f(y + r * 0.45)}`, 1.8);
+    default:
+      return '';
+  }
 }
 
 function hairFront(m: Mini, b: Bones): string {
@@ -177,14 +179,20 @@ function hairFront(m: Mini, b: Bones): string {
   const out: string[] = [];
   // A cap of hair over the top of the head.
   const cap = `M${f(x - r * 1.02)},${f(y - r * 0.05)} Q${f(x - r * 1.05)},${f(y - r * 1.15)} ${f(x)},${f(y - r * 1.12)} Q${f(x + r * 1.05)},${f(y - r * 1.15)} ${f(x + r * 1.02)},${f(y - r * 0.05)} Q${f(x + r * 0.5)},${f(y - r * 0.6)} ${f(x)},${f(y - r * 0.55)} Q${f(x - r * 0.5)},${f(y - r * 0.6)} ${f(x - r * 1.02)},${f(y - r * 0.05)} Z`;
-  if (style === 'wild') {
-    // Curly puffs round the crown, rounded so it never reads as a crown.
-    for (let i = 0; i <= 6; i++) {
-      const a = Math.PI * 1.05 + (i / 6) * Math.PI * 0.9;
-      out.push(shape.circle(x + Math.cos(a) * r * 0.98, y + Math.sin(a) * r * 0.98, r * 0.42, c));
+  if (style === 'mohawk') {
+    // Shaved sides, a ridge from the brow over the crown.
+    out.push(shape.path(`M${f(x - r * 0.28)},${f(y - r * 0.7)} Q${f(x - r * 0.35)},${f(y - r * 1.5)} ${f(x)},${f(y - r * 1.62)} Q${f(x + r * 0.35)},${f(y - r * 1.5)} ${f(x + r * 0.28)},${f(y - r * 0.7)} Z`, c));
+    return out.join('');
+  }
+  if (style === 'wild' || style === 'curly') {
+    // Curly puffs round the crown, rounded so it never reads as a crown; tighter curls for curly.
+    const puffs = style === 'wild' ? 6 : 8;
+    for (let i = 0; i <= puffs; i++) {
+      const a = Math.PI * (style === 'wild' ? 1.05 : 0.92) + (i / puffs) * Math.PI * (style === 'wild' ? 0.9 : 1.16);
+      out.push(shape.circle(x + Math.cos(a) * r * 0.98, y + Math.sin(a) * r * 0.98, r * (style === 'wild' ? 0.42 : 0.33), c));
     }
-    out.push(shape.path(cap, c));
-  } else out.push(shape.path(cap, c));
+  }
+  out.push(shape.path(cap, c));
   if (style === 'topknot') out.push(shape.circle(x, y - r * 1.25, r * 0.38, c));
   if (style === 'braids') for (const s of [-1, 1]) out.push(shape.rect(x + s * r * 0.95 - 2.5, y - r * 0.1, 5, r * 1.9, c, 2.5));
   return out.join('');
@@ -195,6 +203,11 @@ function beard(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
   const c = m.hair.colour;
   if (m.beard === 'short') return shape.path(`M${f(x - r * 0.85)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 1.45)} ${f(x + r * 0.85)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 0.75)} ${f(x - r * 0.85)},${f(y + r * 0.1)} Z`, c);
+  if (m.beard === 'braided') {
+    // One thick braid to the chest, tied with two metal rings.
+    const braid = shape.path(`M${f(x - r * 0.9)},${f(y + r * 0.1)} Q${f(x - r * 0.4)},${f(y + r * 1.2)} ${f(x - r * 0.28)},${f(y + r * 2.6)} L${f(x)},${f(y + r * 2.95)} L${f(x + r * 0.28)},${f(y + r * 2.6)} Q${f(x + r * 0.4)},${f(y + r * 1.2)} ${f(x + r * 0.9)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 0.75)} ${f(x - r * 0.9)},${f(y + r * 0.1)} Z`, c);
+    return braid + shape.rect(x - r * 0.36, y + r * 1.45, r * 0.72, r * 0.2, PALETTE.gold!, 1) + shape.rect(x - r * 0.32, y + r * 2.15, r * 0.64, r * 0.2, PALETTE.gold!, 1);
+  }
   if (m.beard === 'forked') return shape.path(`M${f(x - r * 0.9)},${f(y + r * 0.1)} L${f(x - r * 0.45)},${f(y + r * 2.1)} L${f(x)},${f(y + r * 1.2)} L${f(x + r * 0.45)},${f(y + r * 2.1)} L${f(x + r * 0.9)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 0.75)} ${f(x - r * 0.9)},${f(y + r * 0.1)} Z`, c);
   return shape.path(`M${f(x - r * 0.95)},${f(y + r * 0.05)} Q${f(x - r * 0.7)},${f(y + r * 2.2)} ${f(x)},${f(y + r * 2.5)} Q${f(x + r * 0.7)},${f(y + r * 2.2)} ${f(x + r * 0.95)},${f(y + r * 0.05)} Q${f(x)},${f(y + r * 0.75)} ${f(x - r * 0.95)},${f(y + r * 0.05)} Z`, c);
 }
@@ -225,10 +238,81 @@ function headgear(m: Mini, b: Bones): string {
 }
 
 function horns(m: Mini, b: Bones): string {
-  if (m.ancestry !== 'tiefling') return '';
   const { x, y, r } = b.head;
-  const c = shade(m.skin, -0.55);
-  return [-1, 1].map((s) => shape.path(`M${f(x + s * r * 0.45)},${f(y - r * 0.75)} Q${f(x + s * r * 1.3)},${f(y - r * 1.6)} ${f(x + s * r * 0.95)},${f(y - r * 2.15)} Q${f(x + s * r * 0.85)},${f(y - r * 1.4)} ${f(x + s * r * 0.15)},${f(y - r * 0.9)} Z`, c)).join('');
+  const c = m.features.hornColour;
+  const both = (draw: (s: number) => string) => [-1, 1].map(draw).join('');
+  switch (m.features.horns) {
+    case 'curved':
+      return both((s) => shape.path(`M${f(x + s * r * 0.45)},${f(y - r * 0.75)} Q${f(x + s * r * 1.3)},${f(y - r * 1.6)} ${f(x + s * r * 0.95)},${f(y - r * 2.15)} Q${f(x + s * r * 0.85)},${f(y - r * 1.4)} ${f(x + s * r * 0.15)},${f(y - r * 0.9)} Z`, c));
+    case 'ram':
+      // Thick horns that curl down round the ears.
+      return both((s) => shape.path(`M${f(x + s * r * 0.35)},${f(y - r * 0.85)} Q${f(x + s * r * 1.35)},${f(y - r * 1.45)} ${f(x + s * r * 1.6)},${f(y - r * 0.35)} Q${f(x + s * r * 1.68)},${f(y + r * 0.55)} ${f(x + s * r * 1.05)},${f(y + r * 0.45)} Q${f(x + s * r * 1.2)},${f(y - r * 0.05)} ${f(x + s * r * 1.02)},${f(y - r * 0.38)} Q${f(x + s * r * 0.8)},${f(y - r * 0.62)} ${f(x + s * r * 0.6)},${f(y - r * 0.45)} Z`, c) + shape.detail(`M${f(x + s * r * 0.85)},${f(y - r * 0.95)} Q${f(x + s * r * 1.15)},${f(y - r * 0.8)} ${f(x + s * r * 1.12)},${f(y - r * 0.5)} M${f(x + s * r * 1.35)},${f(y - r * 0.45)} Q${f(x + s * r * 1.5)},${f(y)} ${f(x + s * r * 1.32)},${f(y + r * 0.3)}`, shade(c, 0.35), 1.4));
+    case 'straight':
+      return both((s) => shape.poly([[x + s * r * 0.25, y - r * 0.85], [x + s * r * 0.85, y - r * 2.15], [x + s * r * 0.62, y - r * 0.65]], c));
+    case 'swept':
+      // Swept back and out, like a dragon's.
+      return both((s) => shape.path(`M${f(x + s * r * 0.55)},${f(y - r * 0.8)} Q${f(x + s * r * 1.35)},${f(y - r * 0.95)} ${f(x + s * r * 1.75)},${f(y - r * 1.6)} Q${f(x + s * r * 1.4)},${f(y - r * 0.55)} ${f(x + s * r * 0.85)},${f(y - r * 0.35)} Z`, c));
+    case 'antlers':
+      return both((s) => {
+        const beam = `M${f(x + s * r * 0.45)},${f(y - r * 0.8)} L${f(x + s * r * 1.1)},${f(y - r * 1.9)} L${f(x + s * r * 0.95)},${f(y - r * 2.9)} M${f(x + s * r * 0.82)},${f(y - r * 1.4)} L${f(x + s * r * 1.75)},${f(y - r * 1.8)} M${f(x + s * r * 1.02)},${f(y - r * 2.3)} L${f(x + s * r * 1.6)},${f(y - r * 2.7)}`;
+        return `<path d="${beam}" fill="none" stroke="${INK}" stroke-width="5.8"/><path d="${beam}" fill="none" stroke="${c}" stroke-width="3"/>`;
+      });
+    default:
+      return '';
+  }
+}
+
+/** A ring of light floating over the head. */
+function halo(m: Mini, b: Bones): string {
+  if (!m.features.halo) return '';
+  const { x, y, r } = b.head;
+  const cy = y - r * (m.headgear === 'wizard-hat' ? 4 : 1.75) - (m.features.horns === 'antlers' ? r * 1.4 : 0);
+  const ring = (rx: number, ry: number) => `M${f(x - rx)},${f(cy)} a${f(rx)},${f(ry)} 0 1,0 ${f(rx * 2)},0 a${f(rx)},${f(ry)} 0 1,0 ${f(-rx * 2)},0 Z`;
+  return `<path d="${ring(r * 1.05, r * 0.34)} ${ring(r * 0.72, r * 0.17)}" fill="${PALETTE['eye-gold']}" fill-rule="evenodd"/>`;
+}
+
+/** Wings from the shoulders, behind everything: feathered, a bat's, or an insect's. */
+function wings(m: Mini, b: Bones): string {
+  const kind = m.features.wings;
+  if (kind === 'none') return '';
+  const c = m.features.wingColour;
+  const { sw, sy } = b;
+  return [-1, 1]
+    .map((s) => {
+      const root = CX + s * sw * 0.55;
+      const out = (d: number) => CX + s * (sw + d);
+      if (kind === 'feathered')
+        return (
+          shape.path(`M${f(root)},${f(sy + 4)} Q${f(out(8))},${f(sy - 46)} ${f(out(44))},${f(sy - 40)} Q${f(out(52))},${f(sy - 6)} ${f(out(40))},${f(sy + 34)} Q${f(out(34))},${f(sy + 30)} ${f(out(30))},${f(sy + 44)} Q${f(out(22))},${f(sy + 36)} ${f(out(16))},${f(sy + 48)} Q${f(out(8))},${f(sy + 34)} ${f(root)},${f(sy + 30)} Z`, c) +
+          shape.detail(`M${f(out(6))},${f(sy - 8)} Q${f(out(26))},${f(sy - 12)} ${f(out(40))},${f(sy + 6)} M${f(out(4))},${f(sy + 10)} Q${f(out(20))},${f(sy + 8)} ${f(out(32))},${f(sy + 22)}`, shade(c, -0.22))
+        );
+      if (kind === 'bat')
+        return (
+          shape.path(`M${f(root)},${f(sy + 2)} L${f(out(26))},${f(sy - 44)} L${f(out(50))},${f(sy - 18)} Q${f(out(40))},${f(sy - 4)} ${f(out(42))},${f(sy + 14)} Q${f(out(30))},${f(sy + 6)} ${f(out(26))},${f(sy + 26)} Q${f(out(14))},${f(sy + 16)} ${f(root)},${f(sy + 30)} Z`, c) +
+          shape.detail(`M${f(root)},${f(sy + 2)} L${f(out(26))},${f(sy - 44)} M${f(out(20))},${f(sy - 32)} L${f(out(42))},${f(sy + 12)} M${f(out(14))},${f(sy - 20)} L${f(out(26))},${f(sy + 24)}`, shade(c, -0.35), 1.8)
+        );
+      // An insect's: two thin wings a side, pale and see-through.
+      const wing = (len: number, angle: number, wide: number) =>
+        `<ellipse cx="${f(root + s * len * 0.5)}" cy="${f(sy + 6)}" rx="${f(len * 0.5)}" ry="${f(wide)}" fill="${c}" fill-opacity="0.7" transform="rotate(${f(s * angle)} ${f(root)} ${f(sy + 6)})"/>`;
+      return wing(sw + 34, -32, 9) + wing(sw + 24, 18, 7);
+    })
+    .join('');
+}
+
+/** A tail from behind the hip, out to the right: a devil's with a spade tip, a lizard's, or a furry one. */
+function tail(m: Mini, b: Bones): string {
+  const kind = m.features.tail;
+  if (kind === 'none') return '';
+  const { sw, hip } = b;
+  const x0 = CX + sw * 0.3;
+  const tip = { x: CX + sw + 24, y: FEET - 30 };
+  if (kind === 'devil') {
+    const d = `M${f(x0)},${f(hip)} Q${f(CX + sw + 24)},${f(hip + 8)} ${f(tip.x - 6)},${f(tip.y)}`;
+    return `<path d="${d}" fill="none" stroke="${INK}" stroke-width="6.2"/><path d="${d}" fill="none" stroke="${m.skin}" stroke-width="3"/>` + shape.poly([[tip.x - 6, tip.y - 2], [tip.x + 2, tip.y + 2], [tip.x - 4, tip.y + 12], [tip.x - 12, tip.y + 4]], m.skin);
+  }
+  if (kind === 'lizard') return shape.path(`M${f(x0)},${f(hip - 4)} Q${f(CX + sw + 10)},${f(hip)} ${f(tip.x)},${f(FEET - 10)} Q${f(CX + sw + 2)},${f(hip + 14)} ${f(x0)},${f(hip + 6)} Z`, m.skin);
+  const fur = m.hair.style === 'none' ? m.skin : m.hair.colour;
+  return shape.path(`M${f(x0)},${f(hip - 2)} Q${f(CX + sw + 30)},${f(hip - 10)} ${f(tip.x + 4)},${f(tip.y - 4)} Q${f(tip.x + 10)},${f(tip.y + 10)} ${f(tip.x - 6)},${f(tip.y + 8)} Q${f(CX + sw + 6)},${f(hip + 22)} ${f(x0)},${f(hip + 10)} Z`, fur);
 }
 
 /** What the right hand holds. Returns the art and how far over the head it reaches (for the view box). */
@@ -320,102 +404,19 @@ function offhand(m: Mini, b: Bones): string {
 function above(m: Mini, b: Bones): number {
   const r = b.head.r;
   const hat = m.headgear === 'wizard-hat' ? r * 2.6 : m.headgear === 'crown' ? r * 0.6 : m.headgear === 'hood' ? r * 0.5 : 0;
-  const horn = m.ancestry === 'tiefling' ? r * 1.2 : 0;
-  const hair = m.hair.style === 'topknot' ? r * 0.65 : m.hair.style === 'wild' ? r * 0.45 : 0;
-  return Math.max(hat, horn, hair);
+  const horn = { none: 0, curved: r * 1.2, ram: r * 0.5, straight: r * 1.2, swept: r * 0.65, antlers: r * 2 }[m.features.horns];
+  const hair = m.hair.style === 'topknot' || m.hair.style === 'bun' ? r * 0.65 : m.hair.style === 'wild' || m.hair.style === 'mohawk' ? r * 0.45 : 0;
+  const ring = m.features.halo ? r * (m.headgear === 'wizard-hat' ? 3.4 : 1.15) + (m.features.horns === 'antlers' ? r * 1.4 : 0) : 0;
+  const wing = m.features.wings === 'feathered' || m.features.wings === 'bat' ? b.top - (b.sy - 48) : 0;
+  return Math.max(hat, horn, hair, ring, wing);
 }
 
-/** A beast on four legs, side on: wolves, bears, boars, cats. */
-function beast(m: Mini): { art: string; top: number; left: number; right: number } {
-  const c = m.coat;
-  const dark = shade(c, -0.3);
-  const bodyY = 168;
-  const out = [
-    shape.path(`M${f(16)},${f(bodyY - 6)} Q${f(4)},${f(bodyY - 26)} ${f(2)},${f(bodyY - 14)}`, 'none'),
-    shape.rect(26, bodyY + 4, 9, 28, dark, 3),
-    shape.rect(80, bodyY + 4, 9, 28, dark, 3),
-    shape.ellipse(58, bodyY, 40, 17, c),
-    shape.rect(34, bodyY + 6, 9, 26, c, 3),
-    shape.rect(70, bodyY + 6, 9, 26, c, 3),
-    shape.path(`M${f(18)},${f(bodyY - 4)} Q${f(4)},${f(bodyY - 4)} ${f(6)},${f(bodyY - 22)} Q${f(14)},${f(bodyY - 12)} ${f(22)},${f(bodyY - 10)} Z`, c),
-    shape.ellipse(98, bodyY - 18, 15, 13, c),
-    shape.path(`M${f(106)},${f(bodyY - 22)} L${f(124)},${f(bodyY - 14)} Q${f(124)},${f(bodyY - 6)} ${f(108)},${f(bodyY - 8)} Z`, c),
-    shape.poly([[90, bodyY - 28], [94, bodyY - 42], [100, bodyY - 29]], c),
-    shape.circle(104, bodyY - 21, 1.8, INK),
-    shape.circle(123, bodyY - 13, 2, INK),
-  ];
-  return { art: out.join(''), top: bodyY - 46, left: 0, right: 128 };
-}
-
-/** A dragon, side on: wings up, neck raised, tail curling behind. Scales in its coat colour. */
-function dragon(m: Mini): { art: string; top: number; left: number; right: number } {
-  const c = m.coat;
-  const dark = shade(c, -0.32);
-  const belly = shade(c, 0.4);
-  const wing = shade(c, -0.15);
-  const y = 160;
-  const horn = PALETTE.bone!;
-  const out = [
-    // Tail, then the far wing and far legs (darker, behind).
-    shape.path(`M${f(52)},${f(y - 4)} Q${f(20)},${f(y + 2)} ${f(10)},${f(y - 20)} Q${f(6)},${f(y - 34)} ${f(-6)},${f(y - 30)} L${f(2)},${f(y - 22)} Q${f(4)},${f(y - 8)} ${f(30)},${f(y + 10)} Q${f(44)},${f(y + 14)} ${f(56)},${f(y + 10)} Z`, c),
-    shape.path(`M${f(92)},${f(y - 14)} L${f(66)},${f(y - 92)} L${f(40)},${f(y - 70)} Q${f(52)},${f(y - 50)} ${f(48)},${f(y - 30)} Q${f(64)},${f(y - 36)} ${f(72)},${f(y - 20)} Z`, dark),
-    shape.rect(56, y + 4, 11, 34, dark, 4),
-    shape.rect(98, y + 4, 11, 34, dark, 4),
-    // Body, belly, near legs with claws.
-    shape.ellipse(82, y, 40, 19, c),
-    shape.path(`M${f(52)},${f(y + 8)} Q${f(82)},${f(y + 24)} ${f(114)},${f(y + 6)} Q${f(84)},${f(y + 14)} ${f(52)},${f(y + 8)} Z`, belly),
-    shape.rect(64, y + 6, 13, 34, c, 4),
-    shape.rect(106, y + 4, 13, 35, c, 4),
-    shape.poly([[62, y + 40], [66, y + 34], [70, y + 40]], horn),
-    shape.poly([[104, y + 40], [108, y + 34], [112, y + 40]], horn),
-    // Neck rising to the head.
-    shape.path(`M${f(104)},${f(y - 14)} Q${f(128)},${f(y - 30)} ${f(128)},${f(y - 62)} L${f(144)},${f(y - 60)} Q${f(142)},${f(y - 20)} ${f(118)},${f(y + 2)} Z`, c),
-    shape.path(`M${f(120)},${f(y - 6)} Q${f(136)},${f(y - 26)} ${f(136)},${f(y - 58)}`, 'none'),
-    // Head: skull, snout, jaw, horns, eye.
-    shape.poly([[130, y - 74], [124, y - 92], [138, y - 78]], horn),
-    shape.poly([[138, y - 76], [140, y - 96], [146, y - 76]], horn),
-    shape.path(`M${f(124)},${f(y - 66)} Q${f(130)},${f(y - 82)} ${f(148)},${f(y - 78)} L${f(172)},${f(y - 70)} Q${f(176)},${f(y - 64)} ${f(170)},${f(y - 60)} L${f(144)},${f(y - 56)} Q${f(128)},${f(y - 54)} ${f(124)},${f(y - 66)} Z`, c),
-    shape.path(`M${f(146)},${f(y - 58)} L${f(168)},${f(y - 58)} Q${f(162)},${f(y - 50)} ${f(146)},${f(y - 52)} Z`, belly),
-    shape.circle(144, y - 70, 2.6, '#f6d04d'),
-    shape.circle(168, y - 67, 1.4, INK),
-    // Near wing, raised: bones and a scalloped edge.
-    shape.path(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} L${f(124)},${f(y - 112)} Q${f(122)},${f(y - 92)} ${f(112)},${f(y - 84)} Q${f(110)},${f(y - 64)} ${f(98)},${f(y - 58)} Q${f(100)},${f(y - 38)} ${f(98)},${f(y - 14)} Z`, wing),
-    shape.detail(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} M${f(86)},${f(y - 70)} L${f(124)},${f(y - 112)} M${f(90)},${f(y - 52)} L${f(112)},${f(y - 84)}`, dark, 2),
-  ];
-  return { art: out.join(''), top: y - 114, left: -10, right: 180 };
-}
-
-/** Draws a mini as an SVG card. */
-export function renderMini(spec: MiniSpec, options: RenderOptions = {}): RenderedMini {
-  const m = resolveMini(spec);
-  const id = options.id ?? 'mini';
-  const paper = options.paper !== false;
-  let art: string;
-  let top: number;
-  let left = 0;
-  let right = 120;
-  if (m.form === 'beast' || m.form === 'dragon') {
-    const b = m.form === 'dragon' ? dragon(m) : beast(m);
-    art = b.art;
-    top = b.top;
-    left = b.left;
-    right = b.right;
-  } else {
-    const b = skeletonOf(m);
-    const w = weapon(m, b);
-    art = [cloakBack(m, b), hairBack(m, b), legs(m, b), torso(m, b), arms(m, b), head(m, b), hairFront(m, b), beard(m, b), headgear(m, b), horns(m, b), w.art, offhand(m, b)].join('');
-    top = b.top - Math.max(above(m, b), w.reach);
-  }
-  const pad = 12;
-  const vx = left - pad;
-  const vy = Math.floor(top - pad);
-  const width = right - left + pad * 2;
-  const height = FEET + pad + 2 - vy;
-  const tab = paper ? `<rect x="${f(CX - 26)}" y="${FEET - 2}" width="52" height="${pad + 4}" fill="${PAPER}"/>` : '';
-  const figure = `<g stroke="${INK}" stroke-width="${INK_WIDTH}" stroke-linejoin="round" stroke-linecap="round">${art}</g>`;
-  const body = paper
-    ? `<defs><filter id="${id}-cut" x="-15%" y="-10%" width="130%" height="120%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="6.5" result="edgeShape"/><feFlood flood-color="${PAPER_EDGE}"/><feComposite in2="edgeShape" operator="in" result="edge"/><feMorphology in="SourceAlpha" operator="dilate" radius="5" result="paperShape"/><feFlood flood-color="${PAPER}"/><feComposite in2="paperShape" operator="in" result="paper"/><feMerge><feMergeNode in="edge"/><feMergeNode in="paper"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#${id}-cut)">${tab}${figure}</g>`
-    : figure;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(vx)} ${f(vy)} ${f(width)} ${f(height)}" width="${f(width * 2)}" height="${f(height * 2)}">${body}</svg>`;
-  return { svg, width, height };
+/** A figure on two legs, front on: everything from the cloak behind to what it holds. */
+export function humanoid(m: Mini): Drawn {
+  const b = skeletonOf(m);
+  const w = weapon(m, b);
+  const art = [wings(m, b), cloakBack(m, b), tail(m, b), hairBack(m, b), legs(m, b), torso(m, b), arms(m, b), head(m, b), hairFront(m, b), beard(m, b), headgear(m, b), horns(m, b), halo(m, b), w.art, offhand(m, b)].join('');
+  const wingSpan = m.features.wings === 'none' ? 0 : b.sw + (m.features.wings === 'insect' ? 40 : 54);
+  const tailReach = m.features.tail === 'none' ? 0 : b.sw + 38;
+  return { art, top: b.top - Math.max(above(m, b), w.reach), left: Math.min(0, CX - wingSpan), right: Math.max(120, CX + wingSpan, CX + tailReach) };
 }

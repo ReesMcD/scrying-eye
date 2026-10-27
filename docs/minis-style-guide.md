@@ -6,7 +6,7 @@ private link; the DM makes the rest on the Minis page. One look for everyone.
 
 ![Sample sheet](minis-sheet.png)
 
-The numbers behind this guide live in `src/shared/minis/style.ts`. Change them there, not in a part.
+This is the **paper** art style, the app's default. Its ink and card live in `src/shared/minis/paper/draw.ts`; the colours and proportions every style shares live in `src/shared/minis/style.ts`. Change them there, not in a part. Other styles can be added and swapped in (see *Art styles* below).
 
 ## The look in one line
 
@@ -51,11 +51,30 @@ bigger for small folk): they're what you recognise at token size.
 | Gnome | 98 | 34 | 14 | The biggest head for the height. |
 | Goblin | 100 | 34 | 14 | Big ears, grey-green. |
 | Skeleton | 168 | 42 | 12 | Ribs and a skull; no hair or beard. |
+| Aasimar | 170 | 45 | 13 | A halo and shining gold eyes by default. |
+| Goliath | 196 | 60 | 14 | Broad, bald, stony patches on the face. |
+| Orc | 178 | 56 | 14 | The 2024 species: broad, small tusks. (Half-orc stays for older minis.) |
 
 Builds scale the shoulders: slim ×0.86, average ×1, broad ×1.18.
 
 Card height follows the figure, so a gnome's card is shorter than an elf's on the table. Big
 creatures (large, huge) get a bigger base and card, not a different style.
+
+## Species and features
+
+The ten 2024 species (`SPECIES`) each have a few **looks** (`SPECIES_LOOKS` in
+`src/shared/minis/species.ts`): their lineages and legacies, like drow, fire goliath, abyssal
+tiefling or gold dragonborn. A look sets the body and keeps the outfit and gear.
+
+**Features** set a figure apart beyond its clothes, for species and monsters alike: ears (round,
+pointed, long), horns (curved, ram, straight, swept, antlers), a tail (devil, lizard, furred),
+tusks, wings (feathered, bat, insect), a halo, eye colour and glowing eyes, and face markings
+(freckles, patches, runes, stripes, a scar). Species are born with some (a tiefling's horns and
+tail); a mini can change any of them.
+
+- Eyes stay two dots. A colour makes them a little bigger; glowing adds a soft light round them.
+- Markings sit on the skin with no outline of their own.
+- Tusks get a fine outline: the full ink would swallow something that small.
 
 ## Silhouette first
 
@@ -78,7 +97,21 @@ Four-legged animals use the `beast` form: drawn side-on, the same ink and paper.
 ## Adding a part
 
 1. Add the name to its list in `src/shared/minis/spec.ts` (e.g. `HEADGEAR`).
-2. Draw it in `src/shared/minis/render.ts` with the `shape` helpers only (they apply the ink).
+2. Draw it in the paper style (`src/shared/minis/paper/`) with the `shape` helpers only (they apply the ink), and in any other style.
 3. If it reaches above the head, add it to `above()` so the card grows.
 4. Look at it in the Minis page builder next to the others.
 5. `npm test`: every ancestry draws every weapon without broken numbers.
+
+## Art styles
+
+A mini (`MiniSpec`) says *what* a figure is; an art style says how it's drawn. The same saved
+minis, monsters and species then draw in whichever style the app uses.
+
+- `src/shared/minis/styles.ts` has the `MiniArtStyle` interface, the list of styles
+  (`ART_STYLES`) and the one in use (`DEFAULT_ART_STYLE`).
+- A style is a folder like `paper/` exporting a `MiniArtStyle`: `render(mini)` returns an SVG in
+  card units (feet at y = 200, a human about 168 tall), so cards of any style stand at the same
+  height on the board.
+- To add one: make the folder, add it to `ART_STYLES`, and run `npm test`: the tests draw every
+  ancestry, part and creature form in every style. To swap, change `DEFAULT_ART_STYLE`.
+

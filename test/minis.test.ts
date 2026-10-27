@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ANCESTRIES, MiniError, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
+import { ANCESTRIES, ART_STYLES, DEFAULT_ART_STYLE, FORMS, HAIR, MARKINGS, MiniError, SPECIES, SPECIES_LOOKS, withLook, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
 
 test('a page’s mini block keeps the parts it knows and drops the rest', () => {
   const spec = readMiniSpec({ ancestry: 'dwarf', beard: 'forked', hair: { colour: 'hair-copper' }, cloak: 'none', sparkles: true });
@@ -93,4 +93,65 @@ test('the quick-battle monsters each get their own figure: goblin, guard, giant 
   assert.deepEqual(miniForCreature({ name: 'Young Blue Dragon' }), { form: 'dragon', coat: 'navy' });
   assert.notEqual(miniForCreature({ name: 'Dragonborn Knight' }).form, 'dragon');
   for (const name of ['Hill Giant', 'Adult Red Dragon']) assert.doesNotMatch(renderMini(miniForCreature({ name })).svg, /NaN|undefined/, name);
+});
+
+test('every art style draws every ancestry, part and form, at the same card scale', () => {
+  for (const style of Object.keys(ART_STYLES) as ArtStyleId[]) {
+    for (const ancestry of ANCESTRIES)
+      for (const weapon of WEAPONS) assert.doesNotMatch(renderMini({ ancestry, weapon }, { style }).svg, /NaN|undefined/, `${style}: ${ancestry} with ${weapon}`);
+    for (const form of FORMS) assert.doesNotMatch(renderMini({ form }, { style }).svg, /NaN|undefined/, `${style}: ${form}`);
+    assert.equal(renderMini({}, { style, paper: false }).svg.includes('<svg'), true);
+  }
+  assert.equal(renderMini({}).svg, renderMini({}, { style: DEFAULT_ART_STYLE }).svg, 'the default style is used when none is named');
+});
+
+test('every 2024 species has looks, and each is a valid mini that draws', () => {
+  for (const species of SPECIES) {
+    const looks = SPECIES_LOOKS[species];
+    assert.ok(looks.length >= 3, `${species} has looks to pick from`);
+    for (const { name, look } of looks) {
+      assert.deepEqual(readMiniSpec(look), look, `${species}: ${name}`);
+      assert.equal(look.ancestry, species);
+      assert.doesNotMatch(renderMini(look).svg, /NaN|undefined/, `${species}: ${name}`);
+    }
+  }
+});
+
+test('a species look changes the body and keeps the outfit and what it holds', () => {
+  const fighter = { ancestry: 'human', outfit: { kind: 'chain', colour: 'navy' }, weapon: 'sword', offhand: 'shield', beard: 'long' } as const;
+  const drow = withLook(fighter, SPECIES_LOOKS.elf.find((l) => l.name === 'Drow')!.look);
+  assert.equal(drow.ancestry, 'elf');
+  assert.equal(drow.skin, 'skin-drow');
+  assert.equal(drow.beard, undefined, 'the human’s beard goes with the body');
+  assert.deepEqual([drow.outfit, drow.weapon, drow.offhand], [fighter.outfit, 'sword', 'shield']);
+});
+
+test('species are born with their features; a mini can change any of them', () => {
+  const tiefling = resolveMini({ ancestry: 'tiefling' }).features;
+  assert.deepEqual([tiefling.horns, tiefling.tail, tiefling.ears], ['curved', 'devil', 'pointed']);
+  assert.equal(resolveMini({ ancestry: 'tiefling', features: { horns: 'ram', tail: 'none' } }).features.tail, 'none');
+  assert.equal(resolveMini({ ancestry: 'aasimar' }).features.halo, true);
+  assert.equal(resolveMini({ ancestry: 'orc' }).features.tusks, 'small');
+  assert.equal(resolveMini({ ancestry: 'half-orc' }).features.tusks, 'small', 'older minis keep their tusks');
+  assert.equal(resolveMini({ ancestry: 'goliath' }).hair.style, 'none');
+  assert.equal(resolveMini({}).features.horns, 'none');
+  assert.ok(renderMini({ ancestry: 'goliath' }).height > renderMini({ ancestry: 'human' }).height, 'goliaths stand tall');
+});
+
+test('features are checked like any other part', () => {
+  const spec = readMiniSpec({ features: { horns: 'ram', halo: true, eyes: 'eye-gold', sparkle: 9 } });
+  assert.deepEqual(spec, { features: { horns: 'ram', halo: true, eyes: 'eye-gold' } });
+  assert.throws(() => readMiniSpec({ features: { horns: 'unicorn' } }), /horns is one of/);
+  assert.throws(() => readMiniSpec({ features: { halo: 'yes' } }), /halo is true or false/);
+  assert.deepEqual(readMiniSpec({ features: {} }), {}, 'no features is no features');
+});
+
+test('wings widen the card, and a halo or antlers raise it, instead of being cut off', () => {
+  const plain = renderMini({});
+  const winged = renderMini({ features: { wings: 'bat' } });
+  assert.ok(winged.width > plain.width && winged.height > plain.height);
+  assert.ok(renderMini({ features: { halo: true } }).height > plain.height);
+  assert.ok(renderMini({ features: { horns: 'antlers' } }).height > plain.height);
+  assert.ok(renderMini({ features: { tail: 'devil' } }).width > plain.width);
+  for (const markings of MARKINGS) for (const hair of HAIR) assert.doesNotMatch(renderMini({ hair: { style: hair }, features: { markings, glow: true, eyes: 'eye-ice' } }).svg, /NaN|undefined/);
 });
