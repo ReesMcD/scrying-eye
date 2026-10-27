@@ -1,13 +1,19 @@
 import type { Form, Mini } from '../spec.js';
 import type { MiniArtStyle } from '../styles.js';
-import { beast, dragon } from './beasts.js';
+import { arthropod } from './arthropods.js';
+import { beast } from './beasts.js';
+import { bird } from './birds.js';
+import { dragonKind as dragon } from './dragons.js';
+import { blob, elemental, object, plant, swarm } from './oddities.js';
+import { fish } from './sea.js';
+import { serpent } from './serpents.js';
 import { CX, f, FEET, INK, INK_WIDTH, PAPER, PAPER_EDGE } from './draw.js';
 import { humanoid } from './humanoid.js';
 
 /** A figure's art, and how far it reaches (card units) so the card fits it. */
 export type Drawn = { art: string; top: number; left: number; right: number };
 
-const FORMS: Record<Form, (m: Mini) => Drawn> = { humanoid, beast, dragon };
+const FORMS: Record<Form, (m: Mini) => Drawn> = { humanoid, beast, dragon, bird, serpent, arthropod, fish, blob, elemental, swarm, plant, object };
 
 /**
  * The house style (docs/minis-style-guide.md): a figure in flat colours with an ink outline, cut

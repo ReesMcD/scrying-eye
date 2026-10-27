@@ -8,19 +8,40 @@
 export const SPECIES = ['aasimar', 'dragonborn', 'dwarf', 'elf', 'gnome', 'goliath', 'halfling', 'human', 'orc', 'tiefling'] as const;
 /** Every ancestry a mini can have: the species, then older and monstrous ones (half-orc is from the 2014 rules). */
 export const ANCESTRIES = ['human', 'dwarf', 'elf', 'halfling', 'gnome', 'half-orc', 'tiefling', 'dragonborn', 'goblin', 'skeleton', 'aasimar', 'goliath', 'orc'] as const;
-export const OUTFITS = ['tunic', 'robe', 'leather', 'chain', 'plate', 'rags'] as const;
+export const OUTFITS = ['tunic', 'robe', 'leather', 'chain', 'plate', 'rags', 'fur', 'bare', 'loincloth'] as const;
 export const HEADGEAR = ['none', 'hood', 'helm', 'great-helm', 'wizard-hat', 'circlet', 'crown'] as const;
-export const HAIR = ['none', 'short', 'long', 'braids', 'topknot', 'wild', 'bun', 'ponytail', 'mohawk', 'curly'] as const;
+export const HAIR = ['none', 'short', 'long', 'braids', 'topknot', 'wild', 'bun', 'ponytail', 'mohawk', 'curly', 'snakes'] as const;
 export const BEARDS = ['none', 'short', 'long', 'forked', 'braided'] as const;
 export const EARS = ['round', 'pointed', 'long'] as const;
 export const HORNS = ['none', 'curved', 'ram', 'straight', 'swept', 'antlers'] as const;
 export const TAILS = ['none', 'devil', 'lizard', 'furred'] as const;
 export const TUSKS = ['none', 'small', 'large'] as const;
 export const WINGS = ['none', 'feathered', 'bat', 'insect'] as const;
-export const MARKINGS = ['none', 'freckles', 'patches', 'runes', 'stripes', 'scar'] as const;
+export const MARKINGS = ['none', 'freckles', 'patches', 'runes', 'stripes', 'scar', 'spots'] as const;
 export const WEAPONS = ['none', 'sword', 'greatsword', 'axe', 'warhammer', 'mace', 'club', 'spear', 'staff', 'bow', 'crossbow', 'daggers', 'wand'] as const;
 export const OFFHAND = ['none', 'shield', 'kite-shield', 'tome', 'torch', 'orb', 'lantern'] as const;
-export const FORMS = ['humanoid', 'beast', 'dragon'] as const;
+export const FORMS = ['humanoid', 'beast', 'dragon', 'bird', 'serpent', 'arthropod', 'fish', 'blob', 'elemental', 'swarm', 'plant', 'object'] as const;
+
+/** The kinds of body within each form (a beast can be a horse or a frog); the first is the default. */
+export const BODIES = {
+  humanoid: ['person'],
+  beast: ['canine', 'feline', 'lion', 'bear', 'boar', 'horse', 'deer', 'goat', 'ox', 'camel', 'rhino', 'elephant', 'hippo', 'lizard', 'crocodile', 'rodent', 'badger', 'frog', 'turtle', 'raptor', 'triceratops', 'ankylosaurus'],
+  dragon: ['dragon', 'wyvern', 'turtle', 'hydra'],
+  bird: ['raptor', 'owl', 'raven', 'vulture', 'flightless', 'bat', 'pteranodon', 'stirge', 'cockatrice'],
+  serpent: ['snake', 'cobra', 'winged', 'worm', 'segmented'],
+  arthropod: ['spider', 'scorpion', 'crab', 'centipede', 'beetle', 'wasp', 'fly', 'ankheg'],
+  fish: ['shark', 'whale', 'piranha', 'seahorse', 'plesiosaur', 'octopus', 'aboleth'],
+  blob: ['ooze', 'cube', 'mouther', 'otyugh', 'roper', 'xorn', 'cloak', 'eye'],
+  elemental: ['air', 'fire', 'water', 'wisp'],
+  swarm: ['bats', 'insects', 'piranhas', 'rats', 'ravens', 'snakes', 'claws'],
+  plant: ['tree', 'shrub', 'mound', 'mushroom'],
+  object: ['sword', 'chest', 'rug'],
+} as const satisfies Record<(typeof FORMS)[number], readonly string[]>;
+
+/** A head that isn't the body's own: a minotaur's bull, a gnoll's hyena; `human` puts a person's face on a beast (a sphinx). */
+export const HEADS = ['own', 'human', 'bull', 'hyena', 'wolf', 'dog', 'rat', 'tiger', 'lion', 'boar', 'bear', 'ape', 'owl', 'vulture', 'eagle', 'frog', 'fish', 'skull', 'eyeless', 'jackal'] as const;
+/** What a humanoid stands on: legs, or a snake's tail, a fish's, a horse's body, a spider's… */
+export const LOWERS = ['legs', 'snake', 'fish', 'horse', 'spider', 'wisp', 'goat', 'lion', 'talons'] as const;
 
 export type Ancestry = (typeof ANCESTRIES)[number];
 export type Outfit = (typeof OUTFITS)[number];
@@ -30,6 +51,9 @@ export type Beard = (typeof BEARDS)[number];
 export type Weapon = (typeof WEAPONS)[number];
 export type Offhand = (typeof OFFHAND)[number];
 export type Form = (typeof FORMS)[number];
+export type Body = (typeof BODIES)[Form][number];
+export type Head = (typeof HEADS)[number];
+export type Lower = (typeof LOWERS)[number];
 export type Ears = (typeof EARS)[number];
 export type Horns = (typeof HORNS)[number];
 export type Tail = (typeof TAILS)[number];
@@ -53,6 +77,8 @@ export interface FeatureSpec {
   glow?: boolean;
   markings?: Markings;
   markingColour?: Colour;
+  /** Fire on the head, mane or back (a hell hound, a nightmare, an azer). */
+  flames?: boolean;
 }
 
 export interface Features {
@@ -68,6 +94,7 @@ export interface Features {
   glow: boolean;
   markings: Markings;
   markingColour: string;
+  flames: boolean;
 }
 
 /** A colour: a palette name from the style guide (`steel`, `crimson`…) or a hex like `#3d6f9a`. */
@@ -76,6 +103,14 @@ export type Colour = string;
 export interface MiniSpec {
   /** `humanoid` (the default), `beast` (four legs: wolves, bears, boars, big cats) or `dragon` (wings and a tail). */
   form?: Form;
+  /** The kind of body within the form (`BODIES`): a beast that's a horse, a bird that's an owl. */
+  body?: Body;
+  /** More than one head (an ettin, a death dog, a hydra). */
+  heads?: number;
+  /** A humanoid's animal head, lower body and extra arms (a minotaur, a naga, a marilith). */
+  head?: Head;
+  lower?: Lower;
+  arms?: 2 | 4 | 6;
   ancestry?: Ancestry;
   /** Build within the ancestry. */
   build?: 'slim' | 'average' | 'broad';
@@ -95,6 +130,11 @@ export interface MiniSpec {
 /** A mini with every part decided, ready to draw. */
 export interface Mini {
   form: Form;
+  body: Body;
+  heads: number;
+  head: Head;
+  lower: Lower;
+  arms: 2 | 4 | 6;
   ancestry: Ancestry;
   build: 'slim' | 'average' | 'broad';
   skin: string;
@@ -110,6 +150,15 @@ export interface Mini {
 }
 
 export class MiniError extends Error {}
+
+const fail = (message: string): never => {
+  throw new MiniError(message);
+};
+const count = (v: unknown, what: string, min: number, max: number): number | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max) return v;
+  return fail(`${what} is a whole number from ${min} to ${max}`);
+};
 
 const oneOf = <T extends string>(list: readonly T[], value: unknown, what: string): T | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -137,6 +186,11 @@ export function readMiniSpec(raw: unknown): MiniSpec {
   const outfit = obj(r.outfit, 'outfit');
   const out: MiniSpec = {
     form: oneOf(FORMS, r.form, 'form'),
+    body: oneOf(BODIES[oneOf(FORMS, r.form, 'form') ?? 'humanoid'] as readonly Body[], r.body, `a ${oneOf(FORMS, r.form, 'form') ?? 'humanoid'}'s body`),
+    heads: count(r.heads, 'heads', 1, 9),
+    head: oneOf(HEADS, r.head, 'head'),
+    lower: oneOf(LOWERS, r.lower, 'lower body'),
+    arms: r.arms === undefined || r.arms === null ? undefined : r.arms === 2 || r.arms === 4 || r.arms === 6 ? r.arms : fail('arms is 2, 4 or 6'),
     ancestry: oneOf(ANCESTRIES, r.ancestry, 'ancestry'),
     build: oneOf(['slim', 'average', 'broad'] as const, r.build, 'build'),
     skin: colour(r.skin, 'skin'),
@@ -172,6 +226,7 @@ export function readMiniSpec(raw: unknown): MiniSpec {
       glow: flag(raw.glow, 'glow'),
       markings: oneOf(MARKINGS, raw.markings, 'markings'),
       markingColour: colour(raw.markingColour, 'marking colour'),
+      flames: flag(raw.flames, 'flames'),
     });
     return Object.keys(features).length ? features : undefined;
   }

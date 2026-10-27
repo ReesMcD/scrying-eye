@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ANCESTRIES, ART_STYLES, DEFAULT_ART_STYLE, FORMS, HAIR, MARKINGS, MiniError, SPECIES, SPECIES_LOOKS, withLook, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
+import { readFileSync } from 'node:fs';
+import { ANCESTRIES, ART_STYLES, BESTIARY, BODIES, HEADS, LOWERS, type Body, DEFAULT_ART_STYLE, FORMS, HAIR, MARKINGS, MiniError, SPECIES, SPECIES_LOOKS, withLook, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
 
 test('a page’s mini block keeps the parts it knows and drops the rest', () => {
   const spec = readMiniSpec({ ancestry: 'dwarf', beard: 'forked', hair: { colour: 'hair-copper' }, cloak: 'none', sparkles: true });
@@ -65,7 +66,7 @@ test('a creature’s name says more than its type', () => {
   assert.equal(miniForCreature({ name: 'Skeleton 3', type: 'undead' }).ancestry, 'skeleton');
   assert.equal(miniForCreature({ name: 'Goblin Boss', type: 'humanoid (goblinoid)' }).ancestry, 'goblin');
   assert.equal(miniForCreature({ name: 'Dire Wolf', type: 'beast' }).form, 'beast');
-  assert.equal(miniForCreature({ name: 'Barbed Devil', type: 'Fiend (devil)' }).ancestry, 'tiefling');
+  assert.equal(miniForCreature({ name: 'Cambion', type: 'Fiend (devil)' }).ancestry, 'tiefling', 'a fiend the rules don’t list: its type’s figure');
   assert.ok(miniForCreature({ name: 'Mysterious Stranger' }), 'no type still gets a figure');
 });
 
@@ -89,8 +90,8 @@ test('the quick-battle monsters each get their own figure: goblin, guard, giant 
   assert.equal(miniForCreature({ name: 'Goblin Warrior 2', type: 'Fey' }).ancestry, 'goblin');
   assert.equal(miniForCreature({ name: 'Guard', type: 'Humanoid' }).headgear, 'helm');
   assert.equal(miniForCreature({ name: 'Hill Giant', type: 'Giant' }).weapon, 'club');
-  assert.deepEqual(miniForCreature({ name: 'Adult Red Dragon', type: 'Dragon' }), { form: 'dragon', coat: 'crimson' });
-  assert.deepEqual(miniForCreature({ name: 'Young Blue Dragon' }), { form: 'dragon', coat: 'navy' });
+  assert.equal(miniForCreature({ name: 'Adult Red Dragon', type: 'Dragon' }).coat, 'crimson');
+  assert.equal(miniForCreature({ name: 'Young Blue Dragon' }).coat, 'navy');
   assert.notEqual(miniForCreature({ name: 'Dragonborn Knight' }).form, 'dragon');
   for (const name of ['Hill Giant', 'Adult Red Dragon']) assert.doesNotMatch(renderMini(miniForCreature({ name })).svg, /NaN|undefined/, name);
 });
@@ -99,7 +100,7 @@ test('every art style draws every ancestry, part and form, at the same card scal
   for (const style of Object.keys(ART_STYLES) as ArtStyleId[]) {
     for (const ancestry of ANCESTRIES)
       for (const weapon of WEAPONS) assert.doesNotMatch(renderMini({ ancestry, weapon }, { style }).svg, /NaN|undefined/, `${style}: ${ancestry} with ${weapon}`);
-    for (const form of FORMS) assert.doesNotMatch(renderMini({ form }, { style }).svg, /NaN|undefined/, `${style}: ${form}`);
+    for (const form of FORMS) for (const body of BODIES[form] as readonly Body[]) assert.doesNotMatch(renderMini({ form, body }, { style }).svg, /NaN|undefined/, `${style}: ${form} ${body}`);
     assert.equal(renderMini({}, { style, paper: false }).svg.includes('<svg'), true);
   }
   assert.equal(renderMini({}).svg, renderMini({}, { style: DEFAULT_ART_STYLE }).svg, 'the default style is used when none is named');
@@ -154,4 +155,37 @@ test('wings widen the card, and a halo or antlers raise it, instead of being cut
   assert.ok(renderMini({ features: { horns: 'antlers' } }).height > plain.height);
   assert.ok(renderMini({ features: { tail: 'devil' } }).width > plain.width);
   for (const markings of MARKINGS) for (const hair of HAIR) assert.doesNotMatch(renderMini({ hair: { style: hair }, features: { markings, glow: true, eyes: 'eye-ice' } }).svg, /NaN|undefined/);
+});
+
+test('every monster in the 2024 rules has its own figure, valid and drawn', () => {
+  const names: string[] = JSON.parse(readFileSync(new URL('../src/srd/srd-5.2.json', import.meta.url), 'utf8')).monsters.map((m: { name: string }) => m.name);
+  assert.equal(names.length, 331);
+  for (const name of names) {
+    const mini = BESTIARY[name];
+    assert.ok(mini, `${name} has a figure`);
+    assert.deepEqual(readMiniSpec(mini), mini, name);
+    assert.doesNotMatch(renderMini(mini).svg, /NaN|undefined/, name);
+  }
+  assert.deepEqual(Object.keys(BESTIARY).sort(), [...names].sort(), 'and nothing the rules don’t have');
+});
+
+test('a monster from the rules gets its bestiary figure, whatever its number on the board', () => {
+  assert.equal(miniForCreature({ name: 'Owlbear 2', type: 'Monstrosity' }).head, 'owl');
+  assert.equal(miniForCreature({ name: 'minotaur of baphomet' }).head, 'bull');
+  assert.equal(miniForCreature({ name: 'Naga Priestess' }).form, undefined, 'a name the rules don’t have falls back as before');
+});
+
+test('monster bodies: a lower body or extra arms widen the card instead of being cut off', () => {
+  const plain = renderMini({}).width;
+  for (const lower of (['snake', 'horse', 'lion', 'spider'] as const)) assert.ok(renderMini({ lower }).width > plain, lower);
+  assert.ok(renderMini({ arms: 6, weapon: 'sword' }).width > plain);
+  assert.notEqual(renderMini({ heads: 2 }).svg, renderMini({}).svg, 'an ettin’s two heads fit side by side on the card');
+  for (const head of HEADS) for (const lower of LOWERS) assert.doesNotMatch(renderMini({ head, lower, arms: 4, outfit: { kind: 'fur' } }).svg, /NaN|undefined/, `${head} on ${lower}`);
+});
+
+test('a body is checked against its form', () => {
+  assert.deepEqual(readMiniSpec({ form: 'beast', body: 'horse' }), { form: 'beast', body: 'horse' });
+  assert.throws(() => readMiniSpec({ form: 'beast', body: 'spider' }), /a beast's body is one of/);
+  assert.throws(() => readMiniSpec({ heads: 12 }), /heads is a whole number/);
+  assert.throws(() => readMiniSpec({ arms: 3 }), /arms is 2, 4 or 6/);
 });

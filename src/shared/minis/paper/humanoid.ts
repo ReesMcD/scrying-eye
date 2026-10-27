@@ -2,6 +2,7 @@ import type { Mini } from '../spec.js';
 import type { Drawn } from './index.js';
 import { proportionsOf } from '../style.js';
 import { CX, f, FEET, INK, PALETTE, shade, shape } from './draw.js';
+import { aboveAnimal, animalHead, extraArms, fireHair, lowerBody, oddLegs, snakeHair } from './monstrous.js';
 
 /** Where everything on a humanoid hangs, from its proportions. */
 function skeletonOf(m: Mini) {
@@ -19,7 +20,11 @@ function skeletonOf(m: Mini) {
   return { p, top, head, sy, hip, sw, armW, armLen, tilt, rightHand, leftHand };
 }
 
-type Bones = ReturnType<typeof skeletonOf>;
+export type Bones = ReturnType<typeof skeletonOf>;
+
+/** What covers the body: cloth, fur (in the coat colour) or bare skin. */
+const skinned = (m: Mini) => m.outfit.kind === 'bare' || m.outfit.kind === 'loincloth';
+const furred = (m: Mini) => m.outfit.kind === 'fur';
 
 function cloakBack(m: Mini, b: Bones): string {
   if (!m.cloak) return '';
@@ -30,6 +35,7 @@ function cloakBack(m: Mini, b: Bones): string {
 function hairBack(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
   const c = m.hair.colour;
+  if (m.head !== 'own') return '';
   if (m.hair.style === 'long' || m.hair.style === 'wild') return shape.path(`M${f(x - r * 1.05)},${f(y - r * 0.2)} Q${f(x - r * 1.25)},${f(y + r * 2.2)} ${f(x - r * 0.4)},${f(y + r * 2.4)} L${f(x + r * 0.4)},${f(y + r * 2.4)} Q${f(x + r * 1.25)},${f(y + r * 2.2)} ${f(x + r * 1.05)},${f(y - r * 0.2)} Z`, c);
   if (m.headgear === 'great-helm') return '';
   if (m.hair.style === 'bun') return shape.circle(x, y - r * 1.12, r * 0.5, c);
@@ -39,10 +45,11 @@ function hairBack(m: Mini, b: Bones): string {
 }
 
 function legs(m: Mini, b: Bones): string {
+  if (m.lower !== 'legs') return oddLegs(m, b) ?? '';
   const thin = m.ancestry === 'skeleton';
   const w = b.sw * (thin ? 0.32 : 0.52);
-  const legColour = m.ancestry === 'skeleton' ? m.skin : m.outfit.kind === 'plate' ? PALETTE.steel! : m.outfit.kind === 'chain' ? PALETTE.iron! : shade(m.outfit.colour, -0.45);
-  const boot = m.ancestry === 'skeleton' ? m.skin : PALETTE.brown!;
+  const legColour = m.ancestry === 'skeleton' || skinned(m) ? m.skin : furred(m) ? shade(m.coat, -0.1) : m.outfit.kind === 'plate' ? PALETTE.steel! : m.outfit.kind === 'chain' ? PALETTE.iron! : shade(m.outfit.colour, -0.45);
+  const boot = m.ancestry === 'skeleton' ? m.skin : skinned(m) ? shade(m.skin, -0.15) : furred(m) ? shade(m.coat, -0.35) : PALETTE.brown!;
   const len = FEET - b.hip;
   const out: string[] = [];
   for (const side of [-1, 1]) {
@@ -56,10 +63,21 @@ function legs(m: Mini, b: Bones): string {
 function torso(m: Mini, b: Bones): string {
   const { sw, sy, hip } = b;
   const kind = m.outfit.kind;
-  const hem = kind === 'robe' ? FEET - 6 : kind === 'rags' ? hip + (FEET - hip) * 0.35 : hip + (FEET - hip) * 0.18;
+  const hem = kind === 'robe' && (m.lower === 'legs' || m.lower === 'goat' || m.lower === 'talons') ? FEET - 6 : kind === 'rags' ? hip + (FEET - hip) * 0.35 : hip + (FEET - hip) * 0.18;
   const flare = kind === 'robe' ? 1.25 : kind === 'leather' ? 0.95 : 1.05;
-  const fill = kind === 'plate' ? PALETTE.steel! : kind === 'chain' ? PALETTE.iron! : m.outfit.colour;
+  const fill = kind === 'plate' ? PALETTE.steel! : kind === 'chain' ? PALETTE.iron! : kind === 'fur' ? m.coat : skinned(m) ? m.skin : m.outfit.colour;
   const out: string[] = [];
+  if (kind === 'fur' || skinned(m)) {
+    // A furred or bare body: shoulders to hips, a chest line, fur tufts; a loincloth below the belt.
+    out.push(shape.poly([[CX - sw, sy], [CX + sw, sy], [CX + sw * 0.92, hip], [CX - sw * 0.92, hip]], fill));
+    out.push(shape.detail(`M${f(CX - sw * 0.55)},${f(sy + (hip - sy) * 0.3)} Q${f(CX)},${f(sy + (hip - sy) * 0.42)} ${f(CX + sw * 0.55)},${f(sy + (hip - sy) * 0.3)}`, shade(fill, -0.25), 1.6));
+    if (kind === 'fur') for (let i = 0; i < 3; i++) out.push(shape.detail(`M${f(CX - sw * 0.5 + i * sw * 0.5)},${f(hip - 10)} l3,6 l3,-6`, shade(fill, -0.3), 1.4));
+    if (kind === 'loincloth') {
+      out.push(shape.rect(CX - sw * 0.95, hip - 6, sw * 1.9, 6, PALETTE.brown!, 1));
+      out.push(shape.poly([[CX - sw * 0.45, hip], [CX + sw * 0.45, hip], [CX + sw * 0.3, hip + (FEET - hip) * 0.35], [CX - sw * 0.3, hip + (FEET - hip) * 0.35]], m.outfit.colour));
+    }
+    return out.join('');
+  }
   if (kind === 'rags') {
     // A torn hem: zigzag across the bottom.
     const pts: Array<[number, number]> = [[CX - sw, sy], [CX + sw, sy], [CX + sw * flare, hem]];
@@ -73,7 +91,7 @@ function torso(m: Mini, b: Bones): string {
   }
   if (kind === 'chain') for (let y = sy + 5; y < hem - 2; y += 5) out.push(shape.detail(`M${f(CX - sw * 0.8)},${f(y)} L${f(CX + sw * 0.8)},${f(y)}`, shade(fill, -0.3), 1.1));
   if (kind === 'leather') out.push(shape.detail(`M${f(CX - sw * 0.5)},${f(sy + 4)} L${f(CX + sw * 0.4)},${f(hip - 6)}`, shade(fill, -0.35), 2.2));
-  if (kind === 'robe') out.push(shape.rect(CX - 3, sy + 2, 6, FEET - 8 - sy, m.outfit.trim, 1));
+  if (kind === 'robe') out.push(shape.rect(CX - 3, sy + 2, 6, hem - 2 - sy, m.outfit.trim, 1));
   // The belt, with a buckle in the trim colour.
   if (kind !== 'rags') {
     out.push(shape.rect(CX - sw * 1.0, hip - 6, sw * 2.0, 6, PALETTE.brown!, 1));
@@ -84,7 +102,7 @@ function torso(m: Mini, b: Bones): string {
 }
 
 function arms(m: Mini, b: Bones): string {
-  const sleeve = m.ancestry === 'skeleton' ? m.skin : m.outfit.kind === 'plate' ? PALETTE.steel! : m.outfit.kind === 'chain' ? PALETTE.iron! : shade(m.outfit.colour, -0.08);
+  const sleeve = m.ancestry === 'skeleton' || skinned(m) ? m.skin : furred(m) ? m.coat : m.outfit.kind === 'plate' ? PALETTE.steel! : m.outfit.kind === 'chain' ? PALETTE.iron! : shade(m.outfit.colour, -0.08);
   const out: string[] = [];
   for (const side of [-1, 1]) {
     const sx = CX + side * (b.sw - b.armW * 0.45);
@@ -97,6 +115,8 @@ function arms(m: Mini, b: Bones): string {
 }
 
 function head(m: Mini, b: Bones): string {
+  const beast = animalHead(m, b);
+  if (beast !== null) return beast;
   const { x, y, r } = b.head;
   const out: string[] = [];
   const ears = m.features.ears;
@@ -175,7 +195,8 @@ function hairFront(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
   const c = m.hair.colour;
   const style = m.hair.style;
-  if (style === 'none' || m.headgear === 'great-helm') return '';
+  if (style === 'none' || m.headgear === 'great-helm' || m.head !== 'own') return '';
+  if (style === 'snakes') return snakeHair(m, b);
   const out: string[] = [];
   // A cap of hair over the top of the head.
   const cap = `M${f(x - r * 1.02)},${f(y - r * 0.05)} Q${f(x - r * 1.05)},${f(y - r * 1.15)} ${f(x)},${f(y - r * 1.12)} Q${f(x + r * 1.05)},${f(y - r * 1.15)} ${f(x + r * 1.02)},${f(y - r * 0.05)} Q${f(x + r * 0.5)},${f(y - r * 0.6)} ${f(x)},${f(y - r * 0.55)} Q${f(x - r * 0.5)},${f(y - r * 0.6)} ${f(x - r * 1.02)},${f(y - r * 0.05)} Z`;
@@ -199,7 +220,7 @@ function hairFront(m: Mini, b: Bones): string {
 }
 
 function beard(m: Mini, b: Bones): string {
-  if (m.beard === 'none') return '';
+  if (m.beard === 'none' || m.head !== 'own') return '';
   const { x, y, r } = b.head;
   const c = m.hair.colour;
   if (m.beard === 'short') return shape.path(`M${f(x - r * 0.85)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 1.45)} ${f(x + r * 0.85)},${f(y + r * 0.1)} Q${f(x)},${f(y + r * 0.75)} ${f(x - r * 0.85)},${f(y + r * 0.1)} Z`, c);
@@ -408,15 +429,27 @@ function above(m: Mini, b: Bones): number {
   const hair = m.hair.style === 'topknot' || m.hair.style === 'bun' ? r * 0.65 : m.hair.style === 'wild' || m.hair.style === 'mohawk' ? r * 0.45 : 0;
   const ring = m.features.halo ? r * (m.headgear === 'wizard-hat' ? 3.4 : 1.15) + (m.features.horns === 'antlers' ? r * 1.4 : 0) : 0;
   const wing = m.features.wings === 'feathered' || m.features.wings === 'bat' ? b.top - (b.sy - 48) : 0;
-  return Math.max(hat, horn, hair, ring, wing);
+  const odd = Math.max(aboveAnimal(m, r), m.hair.style === 'snakes' ? r * 0.65 : 0, m.features.flames ? r * 1.9 : 0);
+  return Math.max(hat, horn, hair, ring, wing, odd);
 }
 
 /** A figure on two legs, front on: everything from the cloak behind to what it holds. */
 export function humanoid(m: Mini): Drawn {
   const b = skeletonOf(m);
   const w = weapon(m, b);
-  const art = [wings(m, b), cloakBack(m, b), tail(m, b), hairBack(m, b), legs(m, b), torso(m, b), arms(m, b), head(m, b), hairFront(m, b), beard(m, b), headgear(m, b), horns(m, b), halo(m, b), w.art, offhand(m, b)].join('');
+  const lower = lowerBody(m, b);
+  const sleeve = skinned(m) ? m.skin : furred(m) ? m.coat : m.outfit.kind === 'plate' ? PALETTE.steel! : m.outfit.kind === 'chain' ? PALETTE.iron! : shade(m.outfit.colour, -0.08);
+  // Two heads side by side (an ettin), or one.
+  const heads = m.heads > 1 ? [-1, 1].map((s) => ({ ...b, head: { ...b.head, x: b.head.x + s * b.head.r * 1.05 } })) : [b];
+  const headArt = heads.map((hb) => [head(m, hb), hairFront(m, hb), fireHair(m, hb), beard(m, hb), headgear(m, hb), horns(m, hb), halo(m, hb)].join('')).join('');
+  const art = [wings(m, b), cloakBack(m, b), tail(m, b), lower?.art ?? '', heads.map((hb) => hairBack(m, hb)).join(''), legs(m, b), torso(m, b), extraArms(m, b, sleeve), arms(m, b), headArt, w.art, offhand(m, b)].join('');
   const wingSpan = m.features.wings === 'none' ? 0 : b.sw + (m.features.wings === 'insect' ? 40 : 54);
   const tailReach = m.features.tail === 'none' ? 0 : b.sw + 38;
-  return { art, top: b.top - Math.max(above(m, b), w.reach), left: Math.min(0, CX - wingSpan), right: Math.max(120, CX + wingSpan, CX + tailReach) };
+  const armReach = m.arms > 2 ? b.sw + b.armLen * 0.9 : 0;
+  return {
+    art,
+    top: b.top - Math.max(above(m, b), w.reach),
+    left: Math.min(0, CX - wingSpan, CX - armReach, lower?.left ?? 0, m.heads > 1 ? CX - b.head.r * 2.6 : 0),
+    right: Math.max(120, CX + wingSpan, CX + tailReach, CX + armReach, lower?.right ?? 0),
+  };
 }

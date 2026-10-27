@@ -1,4 +1,5 @@
 import type { MiniSpec } from './spec.js';
+import { bestiaryMini } from './bestiary.js';
 
 /**
  * A mini for a creature that has no mini of its own: a stat block's type and name are
@@ -79,10 +80,13 @@ function variedFigure(name: string): MiniSpec {
 }
 
 /**
- * A creature's mini when it has none of its own: its name's if the name says what it is ("Goblin
- * Boss"), else its type's ("undead"), else a plain figure varied by its name.
+ * A creature's mini when it has none of its own: the bestiary's for a monster from the rules,
+ * else its name's if the name says what it is ("Goblin Boss"), else its type's ("undead"), else a
+ * plain figure varied by its name.
  */
 export function miniForCreature(c: Creature): MiniSpec {
+  const known = bestiaryMini(miniNameKey(c.name));
+  if (known) return known;
   const wyrm = /\b(dragon|wyrm|wyrmling|drake)\b/i.exec(c.name);
   if (wyrm && !/dragonborn/i.test(c.name)) return { form: 'dragon', coat: dragonColour(c.name) };
   for (const [pattern, spec] of BY_NAME) if (pattern.test(c.name)) return spec;
