@@ -44,6 +44,13 @@ export default function Map3D(props: MapViewProps & { onUnavailable: () => void;
     engine.current?.update();
   });
 
+  // On a phone, start near my own character: the whole map is too small to play on there.
+  const mineId = props.map.tokens.find((t) => props.info[t.id]?.mine)?.id;
+  useEffect(() => {
+    if (props.follow || !mineId || !wrap.current || wrap.current.clientWidth > 640) return;
+    engine.current?.lookAt(mineId, 14);
+  }, [mineId, props.follow]);
+
   // Following the action (the screen view): whoever's turn it is, else everything seen so far.
   const turn = props.map.tokens.find((t) => props.info[t.id]?.current);
   const focus = turn ? `${turn.id}@${turn.at.join(',')}` : `seen:${props.fog?.revealed.size ?? 0}`;
