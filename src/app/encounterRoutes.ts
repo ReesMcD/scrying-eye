@@ -1,3 +1,4 @@
+import type { PublicLink } from './funnel.js';
 import { Hono, type Context } from 'hono';
 import { EncounterError } from '../encounter/rules.js';
 import type { EncounterStore } from '../encounter/store.js';
@@ -26,6 +27,8 @@ import type { WikiDungeons } from '../encounter/dungeonWiki.js';
  *   POST /encounter/link                     a new link (the old one stops working)
  *   POST /encounter/post                     post the join link in Discord
  *   POST /players/check                      { public_url }: does the public address reach the players' page?
+ *   GET  /players/funnel                     is the players' link public? (Turns Tailscale Funnel on when it's off.)
+ *   POST /players/funnel                     turn Funnel on for the players' port even over another, and save its address
  *   POST /encounter/suggest                  { id }: Claude's idea for a monster's turn (when turned on)
  */
 /** Where players join: the public address (Funnel) when set, and this Mac's own address for testing. */
@@ -50,10 +53,12 @@ export interface EncounterRouteDeps {
   advisor?: AdvisorSource;
   /** Each campaign's party, from the roster (for quick battles). */
   campaigns?: () => QuickBattleOptions['campaigns'];
+  /** Keeps the players' link public (Tailscale Funnel on this Mac). */
+  publicLink?: PublicLink;
 }
 
 export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps): Hono {
-  const { wiki, dungeons, links, doFetch = fetch, bot, advisor } = deps;
+  const { wiki, dungeons, links, doFetch = fetch, bot, advisor, publicLink } = deps;
   const r = new Hono();
   const failed = (c: Context, err: unknown) => {
     if (err instanceof WikiEncountersError) return c.json({ error: err.message }, err.status as 404 | 409 | 502);
@@ -151,7 +156,11 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
     if (!code) return { url: null, local: null, publicUrlSet: !!publicUrl };
     return { url: publicJoinUrl({ publicUrl, port }, code), local: `http://localhost:${port}/play/${code}`, publicUrlSet: !!publicUrl };
   };
-  r.get('/encounter/link', (c) => c.json(linkFor()));
+  r.get('/encounter/link', (c) => {
+    // Wanting the link is the moment to make sure it's public (in the background: the answer comes now).
+    void publicLink?.ensure().catch(() => undefined);
+    return c.json(linkFor());
+  });
   r.post('/encounter/link', (c) => {
     try {
       store.newJoinLink();
@@ -193,6 +202,11 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
       return c.json({ ok: false, message: `Couldn't reach it: ${(err as Error).message}. Is Funnel on? (tailscale funnel --bg ${links().port})` });
     }
   });
+
+  // The public link: Funnel's state (turned on when it's off), and turning it on over another port.
+  const noTailscale = () => ({ on: false, problem: 'no-tailscale', publicUrl: null, message: 'Tailscale isn’t available here', saved: links().publicUrl ?? null, approve: null });
+  r.get('/players/funnel', async (c) => c.json(publicLink ? await publicLink.ensure() : noTailscale()));
+  r.post('/players/funnel', async (c) => c.json(publicLink ? await publicLink.force() : noTailscale()));
 
   r.post('/encounter/suggest', async (c) => {
     const { id } = (await c.req.json().catch(() => ({}))) as { id?: unknown };

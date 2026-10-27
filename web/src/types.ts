@@ -30,6 +30,7 @@ export type {
   PollSchedule,
   PollsState,
   JoinLink,
+  FunnelStatus,
   WikiEncounter,
   WikiEncounterSummary,
   Config,

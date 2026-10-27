@@ -1,3 +1,4 @@
+import { PublicLink, systemTailscale, type TailscaleCli } from './funnel.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
@@ -54,6 +55,10 @@ export interface ApiOptions {
   httpFetch?: typeof fetch;
   /** For tests: the monster-turn assistant (default: Claude, when turned on). */
   turnAdvisor?: TurnAdvisor;
+  /** Keeps the players' link public; the server shares one with its startup check. */
+  publicLink?: PublicLink;
+  /** For tests: Tailscale on this Mac (the players' public link). */
+  tailscale?: TailscaleCli;
   /** The wiki's encounters (default: from the upload settings and WIKI_UPLOAD_TOKEN). */
   wikiEncounters?: WikiEncounters;
   /** The wiki's dungeons (default: the same wiki and key). */
@@ -327,6 +332,7 @@ export function createApi(opts: ApiOptions): Hono {
         const players = configSchema.parse(opts.configStore.read().config ?? {}).players;
         return { publicUrl: players.public_url, port: players.port };
       },
+      publicLink: opts.publicLink ?? publicLinkFor(opts.configStore, opts.tailscale ?? systemTailscale()),
       ...(opts.httpFetch ? { doFetch: opts.httpFetch } : {}),
       ...(opts.bot ? { bot: opts.bot } : {}),
       advisor: () => {
@@ -410,4 +416,18 @@ export function miniStoreFor(dataDir: string, configStore: ConfigStore, log?: (m
     () => Object.entries(configStore.read().config?.characters ?? {}).map(([id, ch]) => ({ id, name: ch.name, campaign: ch.campaign })),
     log,
   );
+}
+
+/** The players' public link for this config: Funnel for its port, its address saved into it. */
+export function publicLinkFor(configStore: ConfigStore, cli: TailscaleCli): PublicLink {
+  const players = () => configSchema.parse(configStore.read().config ?? {}).players;
+  return new PublicLink({
+    cli,
+    port: () => players().port,
+    saved: () => players().public_url,
+    save: (url) => {
+      const config = configStore.read().config;
+      if (config) configStore.write({ ...config, players: { ...config.players, public_url: url } });
+    },
+  });
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api';
 import { Field, Toggle } from '../../ui';
+import type { FunnelStatus } from '../../types';
 import type { SectionProps } from './shared';
 
 /** Encounter settings: where players join from their phones (the address Tailscale Funnel gives this Mac), and the monster-turn assistant. */
@@ -8,6 +9,23 @@ export function PlayersSection({ config, update, err }: SectionProps) {
   const p = config.players;
   const [check, setCheck] = useState<{ ok: boolean; message: string } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [funnel, setFunnel] = useState<FunnelStatus | null>(null);
+  const [settingUp, setSettingUp] = useState(false);
+  /** Turns Funnel on from here and fills in its address (the server saves it too). */
+  const setUp = async () => {
+    setSettingUp(true);
+    setCheck(null);
+    try {
+      const f = await api<FunnelStatus>('/players/funnel', { method: 'POST', json: {} });
+      setFunnel(f);
+      if (f.on) update((c) => void (c.players.public_url = f.publicUrl));
+    } catch (e) {
+      setFunnel(null);
+      setCheck({ ok: false, message: (e as Error).message });
+    } finally {
+      setSettingUp(false);
+    }
+  };
   const runCheck = async () => {
     setChecking(true);
     setCheck(null);
@@ -26,6 +44,29 @@ export function PlayersSection({ config, update, err }: SectionProps) {
         <p className="muted small" style={{ marginTop: 0 }}>
           Players join an encounter from a link in Discord, on their phone or in a browser, with nothing to install. Scrying Eye serves only the players’ page on its
           own port, on this Mac alone; <strong>Tailscale Funnel</strong> makes that one port public. The app itself and its password never are.
+        </p>
+        <div className="row">
+          <button className="primary" onClick={() => void setUp()} disabled={settingUp}>
+            {settingUp ? 'Checking…' : 'Make it public now'}
+          </button>
+          {funnel && (
+            <span className={`small ${funnel.on ? 'good-text' : 'bad-text'}`} role="status">
+              {funnel.on ? `✓ ${funnel.message} (${funnel.publicUrl})` : funnel.message}
+              {funnel.approve && (
+                <>
+                  {' '}
+                  <a href={funnel.approve} target="_blank" rel="noreferrer">
+                    Approve Funnel in Tailscale
+                  </a>
+                  , then press it again.
+                </>
+              )}
+            </span>
+          )}
+        </div>
+        <p className="muted small">
+          You shouldn’t need this: the app makes the link public by itself when it starts and whenever you share a link. It’s here if Funnel serves something else on this
+          Mac, or to do it by hand:
         </p>
         <ol className="small setup-steps">
           <li>
