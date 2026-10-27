@@ -100,6 +100,8 @@ export interface MapScene {
   lighting: 'bright' | 'dim' | 'dark';
   /** The ground level at each square ("x,y" → height), where it isn't 0. */
   levels: Map<string, number>;
+  /** The top of something climbed onto (a crate, a table) at each square, where there is one. */
+  tops: Map<string, number>;
   /** The part worth framing: everything but solid rock (the whole map when there's none). */
   open: { x: number; z: number; w: number; d: number };
 }
@@ -146,6 +148,8 @@ export function buildScene(map: BattleMap): MapScene {
   const lights: SceneLight[] = [];
   const pits: ScenePit[] = [];
   const levels = new Map<string, number>();
+  const tops = new Map<string, number>();
+  const standOn = (x: number, y: number, top: number) => tops.set(key(x, y), Math.max(tops.get(key(x, y)) ?? 0, top));
 
   // Raised ground first: what stands on it stands higher. Negative is a pit, drawn as a hole.
   for (const t of map.terrain) {
@@ -217,7 +221,10 @@ export function buildScene(map: BattleMap): MapScene {
         // Barrels and crates are wood; sarcophagi, tombs and low walls are stone.
         const part = /\b(sarcophag\w*|coffins?|tombs?|stone|statue|wall|altar)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? 'altar' : 'cover';
         const what = `${t.asset ?? ''} ${t.label ?? ''}`.trim().toLowerCase();
-        for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h, ...(what ? { what } : {}) });
+        for (const [x, y] of cells) {
+          boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h, ...(what ? { what } : {}) });
+          standOn(x, y, level(x, y) + h);
+        }
         break;
       }
       case 'object': {
@@ -229,9 +236,16 @@ export function buildScene(map: BattleMap): MapScene {
           const what = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
           if (kind === 'tree') props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, 3 + seed), seed });
           else if (kind) props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, kind === 'pillar' ? WALL_HEIGHT : kind === 'statue' ? 1.5 : kind === 'bush' ? 0.6 : 0.7), seed });
-          else if (/\b(chest|coffer|strongbox)\b/.test(what)) boxes.push({ part: 'chest', x: x + 0.22, z: y + 0.3, w: 0.56, d: 0.4, y: level(x, y), h: feet(t.height, 0.42), what });
-          else if (/\b(altar|table|desk|bench)\b/.test(what)) boxes.push({ part: 'altar', x: x + 0.06, z: y + 0.18, w: 0.88, d: 0.64, y: level(x, y), h: feet(t.height, 0.65), what });
-          else boxes.push({ part: 'object', x: x + 0.08, z: y + 0.08, w: 0.84, d: 0.84, y: level(x, y), h: feet(t.height, 1), what });
+          else {
+            // Chests, tables and anything else that isn't solid: something to climb onto.
+            const box: SceneBox = /\b(chest|coffer|strongbox)\b/.test(what)
+              ? { part: 'chest', x: x + 0.22, z: y + 0.3, w: 0.56, d: 0.4, y: level(x, y), h: feet(t.height, 0.42), what }
+              : /\b(altar|table|desk|bench)\b/.test(what)
+                ? { part: 'altar', x: x + 0.06, z: y + 0.18, w: 0.88, d: 0.64, y: level(x, y), h: feet(t.height, 0.65), what }
+                : { part: 'object', x: x + 0.08, z: y + 0.08, w: 0.84, d: 0.84, y: level(x, y), h: feet(t.height, 1), what };
+            boxes.push(box);
+            standOn(x, y, box.y + box.h);
+          }
         }
         break;
       }
@@ -257,7 +271,7 @@ export function buildScene(map: BattleMap): MapScene {
     }
   }
   boxes.push(...mergeMass(mass));
-  return { width: map.width, height: map.height, boxes, props, water, lights, pits, lighting: map.lighting ?? 'bright', levels, open: openArea(map.width, map.height, new Set(mass.map(([x, y]) => key(x, y)))) };
+  return { width: map.width, height: map.height, boxes, props, water, lights, pits, lighting: map.lighting ?? 'bright', levels, tops, open: openArea(map.width, map.height, new Set(mass.map(([x, y]) => key(x, y)))) };
 
   /** A feature's light, and its fixture: a torch on a wall faces the open side; others stand on the floor. */
   function addLights(t: Terrain, cells: Cell[]) {
@@ -326,9 +340,10 @@ function openArea(width: number, height: number, buried: ReadonlySet<string>): M
 }
 
 /** Where a token stands: its footprint's centre, on the highest ground under it. */
-export function figureOf(scene: Pick<MapScene, 'levels'>, t: Pick<MapToken, 'id' | 'size'>, at: Cell): SceneFigure {
+export function figureOf(scene: Pick<MapScene, 'levels' | 'tops'>, t: Pick<MapToken, 'id' | 'size'>, at: Cell): SceneFigure {
   const n = SIZE_SQUARES[t.size];
-  const y = Math.max(0, ...footprint(at, t.size).map(([x, z]) => scene.levels.get(key(x, z)) ?? 0));
+  // On raised ground, or on top of a crate or table it climbed onto.
+  const y = Math.max(0, ...footprint(at, t.size).map(([x, z]) => Math.max(scene.levels.get(key(x, z)) ?? 0, scene.tops.get(key(x, z)) ?? 0)));
   return { id: t.id, x: at[0] + n / 2, z: at[1] + n / 2, y, radius: n * 0.38, height: FIGURE_HEIGHT[t.size] };
 }
 

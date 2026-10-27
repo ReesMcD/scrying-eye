@@ -182,6 +182,7 @@ function MapBoard({ state, map, act, onSelect, showTools }: { state: EncounterSt
         follow={state.status === 'running'}
         fog={state.fog ? { revealed, solid: false } : null}
         overlays={area.overlays}
+        trail={turnTrail(state)}
         {...(area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}
         canMove={() => tool === 'move' && !placing && !area.active}
         onMove={(token, at) => void act({ type: 'move', token, at })}
@@ -216,4 +217,11 @@ function allCells(map: BattleMap): Cell[] {
   const out: Cell[] = [];
   for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) out.push([x, y]);
   return out;
+}
+
+/** Whose turn it is: the squares their token has walked this turn, once it has moved. */
+function turnTrail(state: EncounterState): { token: string; cells: Cell[] } | null {
+  const token = state.turn ? state.combatants.find((c) => c.id === state.turn)?.tokenId : undefined;
+  const cells = token ? state.moved?.[token]?.path : undefined;
+  return token && cells && cells.length > 1 ? { token, cells } : null;
 }

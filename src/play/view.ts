@@ -60,6 +60,7 @@ export function playerView(s: EncounterState, me: string | null, miniFor: (name:
     templates: (s.templates ?? []).filter((t) => !s.fog || s.fog.revealed.includes(`${Math.min(t.at[0], (s.map?.width ?? 1) - 1)},${Math.min(t.at[1], (s.map?.height ?? 1) - 1)}`)),
     rolls: (s.rolls ?? []).filter((r) => !r.secret).slice(-PLAYER_ROLLS),
     moved: Object.fromEntries(order.flatMap((c) => (c.tokenId && s.moved?.[c.tokenId] ? [[c.tokenId, s.moved[c.tokenId]!.feet]] : []))),
+    trail: trailOf(s, map),
     minis: Object.fromEntries(
       (map?.tokens ?? []).map((t) => {
         const ref = s.combatants.find((c) => c.tokenId === t.id)?.ref;
@@ -67,6 +68,14 @@ export function playerView(s: EncounterState, me: string | null, miniFor: (name:
       }),
     ),
   };
+}
+
+/** Whose turn it is: their token's walk this turn, when it's on the players' map and has moved. */
+export function trailOf(s: EncounterState, map: { tokens: Array<{ id: string }> } | null): PlayerView['trail'] {
+  const token = s.turn ? s.combatants.find((c) => c.id === s.turn)?.tokenId : undefined;
+  const path = token ? s.moved?.[token]?.path : undefined;
+  if (!token || !path || path.length < 2 || !map?.tokens.some((t) => t.id === token)) return null;
+  return { token, cells: path };
 }
 
 /** The players' copy of the map: their rules (playersMap), then cut to what the fog has revealed. */

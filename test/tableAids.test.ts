@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { blankMap, type BattleMap, type MapToken } from '../src/shared/battlemap.js';
-import { flankedTokens, flankPieces, pathFeet } from '../src/shared/tableAids.js';
+import { flankedTokens, flankPieces, pathFeet, pathRoute } from '../src/shared/tableAids.js';
 
 /** 10×8 with a wall down x = 4 (rows 0–5), a gap at the bottom, and a patch of difficult ground. */
 function room(tokens: MapToken[] = []): BattleMap {
@@ -65,4 +65,24 @@ test('flanking a large creature: either side of its 2×2', () => {
   const m = room([token('ogre', 'monster', [6, 3], 'large'), token('ari', 'pc', [5, 4]), token('bob', 'pc', [8, 3])]);
   const pieces = flankPieces(['ogre', 'ari', 'bob'].map((id) => ({ tokenId: id, kind: id === 'ogre' ? 'monster' : 'pc', down: false, conditions: [] })));
   assert.deepEqual([...flankedTokens(m, pieces)], ['ogre']);
+});
+
+test('the way walked goes around a pillar and pays double to climb onto crates', () => {
+  const m: BattleMap = {
+    ...blankMap(5, 3),
+    terrain: [
+      { kind: 'object', asset: 'pillar', cells: [[2, 1]] },
+      { kind: 'cover', cover: 'half', asset: 'crates', cells: [[4, 1]] },
+      { kind: 'object', asset: 'brazier', cells: [[0, 2]] },
+    ],
+    tokens: [],
+  };
+  const route = pathRoute(m, 'medium', [1, 1], [3, 1]);
+  assert.deepEqual(route[0], [1, 1]);
+  assert.deepEqual(route.at(-1), [3, 1]);
+  assert.ok(!route.some(([x, y]) => x === 2 && y === 1), 'never through the pillar');
+  assert.equal(pathFeet(m, 'medium', [1, 1], [3, 1]), 10, 'one diagonal round it, one back');
+  assert.equal(pathFeet(m, 'medium', [3, 1], [4, 1]), 10, 'climbing up costs double');
+  assert.equal(pathFeet(m, 'medium', [0, 1], [0, 2]), 5, 'a brazier is a light, not something to climb');
+  assert.deepEqual(pathRoute(m, 'medium', [0, 0], [0, 0]), [[0, 0]]);
 });
