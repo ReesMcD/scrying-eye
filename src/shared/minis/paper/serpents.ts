@@ -47,7 +47,7 @@ function coiled(m: Mini): Drawn {
   out.push(eye(m, 88, FEET - 107, 1.6));
   if (m.features.horns !== 'none') out.push(shape.poly([[80, FEET - 110], [76, FEET - 124], [86, FEET - 112]], m.features.hornColour));
   if (m.features.flames) out.push(flames([[70, FEET - 30], [50, FEET - 32], [90, FEET - 60]], 14));
-  return { art: out.join(''), top: Math.min(top, FEET - 126), left, right: 116 };
+  return { art: out.join(''), top: Math.min(top, FEET - 126), left, right: 116, face: { x: 88, y: FEET - 102, r: 20 } };
 }
 
 /** A great worm reared out of the ground, its round mouth full of teeth. */

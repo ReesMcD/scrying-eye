@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { ANCESTRIES, ART_STYLES, BESTIARY, BODIES, HEADS, LOWERS, type Body, DEFAULT_ART_STYLE, FORMS, HAIR, MARKINGS, MiniError, SPECIES, SPECIES_LOOKS, withLook, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
+import { ANCESTRIES, ART_STYLES, BESTIARY, renderPortrait, BODIES, HEADS, LOWERS, type Body, DEFAULT_ART_STYLE, FORMS, HAIR, MARKINGS, MiniError, SPECIES, SPECIES_LOOKS, withLook, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
 
 test('a page’s mini block keeps the parts it knows and drops the rest', () => {
   const spec = readMiniSpec({ ancestry: 'dwarf', beard: 'forked', hair: { colour: 'hair-copper' }, cloak: 'none', sparkles: true });
@@ -188,4 +188,19 @@ test('a body is checked against its form', () => {
   assert.throws(() => readMiniSpec({ form: 'beast', body: 'spider' }), /a beast's body is one of/);
   assert.throws(() => readMiniSpec({ heads: 12 }), /heads is a whole number/);
   assert.throws(() => readMiniSpec({ arms: 3 }), /arms is 2, 4 or 6/);
+});
+
+test('a token’s face is a square crop on the figure’s head, for every body and every monster', () => {
+  const inside = (spec: Parameters<typeof renderMini>[0], what: string) => {
+    const { svg, face } = renderMini(spec);
+    const [vx, vy, vw, vh] = svg.match(/viewBox="([^"]+)"/)![1]!.split(' ').map(Number) as [number, number, number, number];
+    assert.ok(face.r > 4, `${what}: a face big enough to see`);
+    assert.ok(face.x >= vx && face.x <= vx + vw && face.y >= vy && face.y <= vy + vh, `${what}: the face is on the card`);
+  };
+  for (const form of FORMS) for (const body of BODIES[form] as readonly Body[]) inside({ form, body }, `${form} ${body}`);
+  for (const [name, mini] of Object.entries(BESTIARY)) inside(mini, name);
+  const portrait = renderPortrait({ ancestry: 'dwarf' }, { id: 'tok' });
+  const [, , w, h] = portrait.match(/viewBox="([^"]+)"/)![1]!.split(' ').map(Number);
+  assert.equal(w, h, 'square');
+  assert.doesNotMatch(portrait, /filter|NaN|undefined/, 'no paper cut-out, nothing broken');
 });

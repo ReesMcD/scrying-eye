@@ -11,7 +11,7 @@ import { CX, f, FEET, INK, INK_WIDTH, PAPER, PAPER_EDGE } from './draw.js';
 import { humanoid } from './humanoid.js';
 
 /** A figure's art, and how far it reaches (card units) so the card fits it. */
-export type Drawn = { art: string; top: number; left: number; right: number };
+export type Drawn = { art: string; top: number; left: number; right: number; face?: { x: number; y: number; r: number } };
 
 const FORMS: Record<Form, (m: Mini) => Drawn> = { humanoid, beast, dragon, bird, serpent, arthropod, fish, blob, elemental, swarm, plant, object };
 
@@ -24,7 +24,7 @@ export const paperStyle: MiniArtStyle = {
   id: 'paper',
   name: 'Paper minis',
   render(m, { id, paper }) {
-    const { art, top, left, right } = FORMS[m.form](m);
+    const { art, top, left, right, face: drawnFace } = FORMS[m.form](m);
     const pad = 12;
     const vx = left - pad;
     const vy = Math.floor(top - pad);
@@ -36,6 +36,8 @@ export const paperStyle: MiniArtStyle = {
       ? `<defs><filter id="${id}-cut" x="-15%" y="-10%" width="130%" height="120%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="6.5" result="edgeShape"/><feFlood flood-color="${PAPER_EDGE}"/><feComposite in2="edgeShape" operator="in" result="edge"/><feMorphology in="SourceAlpha" operator="dilate" radius="5" result="paperShape"/><feFlood flood-color="${PAPER}"/><feComposite in2="paperShape" operator="in" result="paper"/><feMerge><feMergeNode in="edge"/><feMergeNode in="paper"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#${id}-cut)">${tab}${figure}</g>`
       : figure;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(vx)} ${f(vy)} ${f(width)} ${f(height)}" width="${f(width * 2)}" height="${f(height * 2)}">${body}</svg>`;
-    return { svg, width, height };
+    // Without a head of its own (an ooze, a swarm), the token shows the top of the figure.
+    const face = drawnFace ?? { x: (left + right) / 2, y: top + Math.min(FEET - top, right - left) * 0.42, r: Math.min(FEET - top, right - left) * 0.45 };
+    return { svg, width, height, face };
   },
 };

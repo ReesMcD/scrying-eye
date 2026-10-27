@@ -446,8 +446,11 @@ export function humanoid(m: Mini): Drawn {
   const wingSpan = m.features.wings === 'none' ? 0 : b.sw + (m.features.wings === 'insect' ? 40 : 54);
   const tailReach = m.features.tail === 'none' ? 0 : b.sw + 38;
   const armReach = m.arms > 2 ? b.sw + b.armLen * 0.9 : 0;
+  const { x, y, r } = b.head;
   return {
     art,
+    // The face, with room for ears, horns and the top of the shoulders; both heads of an ettin.
+    face: { x, y: y + r * 0.25, r: r * (m.heads > 1 ? 2.5 : 1.75) },
     top: b.top - Math.max(above(m, b), w.reach),
     left: Math.min(0, CX - wingSpan, CX - armReach, lower?.left ?? 0, m.heads > 1 ? CX - b.head.r * 2.6 : 0),
     right: Math.max(120, CX + wingSpan, CX + tailReach, CX + armReach, lower?.right ?? 0),

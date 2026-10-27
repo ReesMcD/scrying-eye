@@ -73,7 +73,7 @@ function perched(m: Mini): Drawn {
   }
   const h = sideHead(owl ? 'owl' : 'eagle', 70, cy - 34, owl ? 15 : 12, m, m.body === 'raptor' ? light : c);
   out.push(h.art);
-  return { art: out.join(''), top: Math.min(top, h.top), left, right: h.right };
+  return { art: out.join(''), top: Math.min(top, h.top), left, right: h.right, face: { x: 74, y: cy - 30, r: 24 } };
 }
 
 /** A tall running bird with a huge hatchet beak. */

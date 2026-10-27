@@ -6,6 +6,8 @@ import type { ArtPlan, MiniSpec } from '../../../src/shared/types';
 import { initials, label, loadPictures, paintFog, paintGrid, paintOverlays, paintRoute, paintTerrain, palette, type Overlay, type Palette } from './paint';
 import { dropAllowed, PENDING_MS, pendingMove, settled, shownAt, type PendingMove } from './pendingMove';
 import { moveGuide } from './moveGuide';
+import { portrait } from './portraits';
+import { miniForCreature } from '../../../src/shared/minis';
 import './map.css';
 
 export type { Overlay };
@@ -117,6 +119,9 @@ export function BattleMapView(props: MapViewProps) {
     view.current = { scale, ox: el.clientWidth / 2 - fx * scale, oy: el.clientHeight / 2 - fy * scale };
   };
 
+  /** A token's face: its own mini, else the figure its name and stat block give it. */
+  const faceOf = (t: MapToken, ti: TokenInfo | undefined) => portrait(ti?.mini ?? miniForCreature({ name: ti?.name ?? t.name }), redraw);
+
   const draw = () => {
     const el = wrap.current;
     const c = canvas.current;
@@ -178,10 +183,10 @@ export function BattleMapView(props: MapViewProps) {
     for (const t of map.tokens) {
       const ti = info[t.id];
       if (d?.moved && d.tokenId === t.id) {
-        paintToken(ctx, t, t.at, s, ti, colors, { faded: true });
+        paintToken(ctx, t, t.at, s, ti, colors, { faded: true, face: faceOf(t, ti) });
         continue;
       }
-      paintToken(ctx, t, shownAt(t, pending.current, now), s, ti, colors, { selected: selected === t.id });
+      paintToken(ctx, t, shownAt(t, pending.current, now), s, ti, colors, { selected: selected === t.id, face: faceOf(t, ti) });
     }
 
     // The token being dragged: where it would land, how far, and anything odd about the square.
@@ -193,7 +198,7 @@ export function BattleMapView(props: MapViewProps) {
         const half = (SIZE_SQUARES[t.size] * s) / 2;
         // The way it would walk: around pillars and walls, not through them.
         paintRoute(ctx, pathRoute(map, t.size, d.from, d.to), t.size, s, ok ? colors.accent : colors.warn, 'drag');
-        paintToken(ctx, t, d.to, s, info[t.id], colors, { dragging: true });
+        paintToken(ctx, t, d.to, s, info[t.id], colors, { dragging: true, face: faceOf(t, info[t.id]) });
         label(ctx, guide.warning ? `${guide.text} · ${guide.warning}` : guide.text, d.to[0] * s + half, d.to[1] * s - 16, colors, ok ? undefined : colors.warn);
       }
     }
@@ -388,7 +393,7 @@ export function BattleMapView(props: MapViewProps) {
 
 const centre = (el: HTMLElement | null): [number, number] => [(el?.clientWidth ?? 0) / 2, (el?.clientHeight ?? 0) / 2];
 
-function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: number, info: TokenInfo | undefined, p: Palette, o: { faded?: boolean; selected?: boolean; dragging?: boolean }) {
+function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: number, info: TokenInfo | undefined, p: Palette, o: { faded?: boolean; selected?: boolean; dragging?: boolean; face?: HTMLImageElement | null }) {
   const n = SIZE_SQUARES[t.size];
   const half = (n * s) / 2;
   // A Tiny creature takes a square but is a small token in it (four can share one at the table).
@@ -405,10 +410,24 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
     ctx.stroke();
   }
+  const inner = Math.max(4, r - Math.max(3, s * 0.12));
   ctx.fillStyle = fill;
   ctx.beginPath();
-  ctx.arc(cx, cy, Math.max(4, r - Math.max(3, s * 0.12)), 0, Math.PI * 2);
+  ctx.arc(cx, cy, inner, 0, Math.PI * 2);
   ctx.fill();
+  // The creature's face inside a ring of its side's colour (#108); its initials until the face is drawn.
+  const face = o.face && inner >= 7 ? o.face : null;
+  if (face) {
+    const ring = Math.max(2, inner * 0.16);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner - ring, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = '#fbf6ea';
+    ctx.fill();
+    ctx.drawImage(face, cx - inner + ring, cy - inner + ring, (inner - ring) * 2, (inner - ring) * 2);
+    ctx.restore();
+  }
   if (info?.hidden) {
     ctx.setLineDash([4, 3]);
     ctx.strokeStyle = p.text;
@@ -424,7 +443,7 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.stroke();
   }
   // Initials.
-  if (r * 2 >= 18) {
+  if (!face && r * 2 >= 18) {
     ctx.fillStyle = '#0b0d12';
     ctx.font = `700 ${Math.max(9, Math.min(22, r * 0.75))}px system-ui, sans-serif`;
     ctx.textAlign = 'center';

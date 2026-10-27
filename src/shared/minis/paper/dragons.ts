@@ -43,7 +43,7 @@ export function dragon(m: Mini): Drawn {
   if (m.features.horns === 'curved') out.push(shape.path(`M${f(128)},${f(y - 76)} Q${f(136)},${f(y - 104)} ${f(158)},${f(y - 96)} Q${f(142)},${f(y - 94)} ${f(136)},${f(y - 76)} Z`, horn));
   if (m.features.horns === 'swept') for (let i = 0; i < 5; i++) out.push(shape.poly([[118 + i * 3, y - 14 - i * 10], [108 + i * 3, y - 20 - i * 10], [116 + i * 3, y - 24 - i * 10]], dark));
   if (m.features.horns === 'ram') out.push(shape.path(`M${f(122)},${f(y - 60)} Q${f(110)},${f(y - 78)} ${f(118)},${f(y - 92)} Q${f(126)},${f(y - 76)} ${f(132)},${f(y - 66)} Z`, belly));
-  return { art: out.join(''), top: y - 114, left: -10, right: 180 };
+  return { art: out.join(''), top: y - 114, left: -10, right: 180, face: { x: 150, y: y - 68, r: 26 } };
 }
 
 /** A wyvern: two legs, great wings, a barbed tail; a hydra: many necks; a dragon turtle: a shell. */
@@ -73,7 +73,7 @@ function wyvern(m: Mini): Drawn {
     shape.path(`M${f(92)},${f(y - 12)} L${f(80)},${f(y - 118)} L${f(132)},${f(y - 110)} Q${f(124)},${f(y - 88)} ${f(116)},${f(y - 80)} Q${f(112)},${f(y - 58)} ${f(100)},${f(y - 50)} Z`, shade(c, -0.12)),
     shape.detail(`M${f(92)},${f(y - 12)} L${f(80)},${f(y - 118)} M${f(86)},${f(y - 80)} L${f(132)},${f(y - 110)}`, dark, 2),
   ];
-  return { art: out.join(''), top: y - 122, left: -32, right: 162 };
+  return { art: out.join(''), top: y - 122, left: -32, right: 162, face: { x: 134, y: y - 62, r: 24 } };
 }
 
 function hydra(m: Mini): Drawn {
@@ -120,5 +120,5 @@ function dragonTurtle(m: Mini): Drawn {
   for (let i = 0; i < 5; i++) out.push(shape.poly([[24 + i * 16, y - 34 - (i === 2 ? 14 : i % 2 ? 10 : 4)], [30 + i * 16, y - 54 - (i === 2 ? 12 : i % 2 ? 8 : 0)], [36 + i * 16, y - 34 - (i === 2 ? 14 : i % 2 ? 10 : 4)]], PALETTE.bone!));
   out.push(shape.detail(`M${f(30)},${f(y - 30)} L${f(26)},${f(y + 8)} M${f(56)},${f(y - 40)} L${f(56)},${f(y + 8)} M${f(80)},${f(y - 30)} L${f(86)},${f(y + 8)}`, shade(shell, -0.35), 2));
   out.push(waves(-10, 130));
-  return { art: out.join(''), top: y - 76, left: -12, right: 150 };
+  return { art: out.join(''), top: y - 76, left: -12, right: 150, face: { x: 124, y: y - 60, r: 22 } };
 }
