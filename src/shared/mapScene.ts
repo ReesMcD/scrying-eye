@@ -111,7 +111,14 @@ const feet = (ft: number | undefined, fallback: number) => (typeof ft === 'numbe
 /** A stable pseudo-random number per square. */
 const seedOf = (x: number, y: number) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 1000 / 1000;
 
-const FIGURE_HEIGHT: Record<MapToken['size'], number> = { tiny: 0.45, small: 0.8, medium: 1.2, large: 2, huge: 3, gargantuan: 4 };
+/**
+ * How tall a standee of each size stands (squares; 1 = 5 ft) before its mini's own height is applied.
+ * Small is the same as Medium: a small creature's mini is already drawn short (a goblin's card is
+ * shorter than a human's), so shrinking it again would make it half the height it should be.
+ */
+const FIGURE_HEIGHT: Record<MapToken['size'], number> = { tiny: 0.45, small: 1.2, medium: 1.2, large: 2, huge: 3, gargantuan: 4 };
+/** A stand's radius, in squares: Tiny and Small creatures stand on smaller stands within their square. */
+const STAND: Record<MapToken['size'], number> = { tiny: 0.22, small: 0.31, medium: 0.38, large: 0.76, huge: 1.14, gargantuan: 1.52 };
 
 /** Light fixtures by their asset word, with the light each gives when the map doesn't say (feet). */
 const FIXTURES = { torch: { bright: 20, dim: 40 }, brazier: { bright: 10, dim: 20 }, campfire: { bright: 20, dim: 40 } } as const;
@@ -344,7 +351,7 @@ export function figureOf(scene: Pick<MapScene, 'levels' | 'tops'>, t: Pick<MapTo
   const n = SIZE_SQUARES[t.size];
   // On raised ground, or on top of a crate or table it climbed onto.
   const y = Math.max(0, ...footprint(at, t.size).map(([x, z]) => Math.max(scene.levels.get(key(x, z)) ?? 0, scene.tops.get(key(x, z)) ?? 0)));
-  return { id: t.id, x: at[0] + n / 2, z: at[1] + n / 2, y, radius: n * 0.38, height: FIGURE_HEIGHT[t.size] };
+  return { id: t.id, x: at[0] + n / 2, z: at[1] + n / 2, y, radius: STAND[t.size], height: FIGURE_HEIGHT[t.size] };
 }
 
 /** The square under a point on the ground (scene x/z), or null off the map. */

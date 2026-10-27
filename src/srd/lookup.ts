@@ -90,10 +90,24 @@ function uniqueRules(rules: Rule[]): Rule[] {
   return rules.map((r) => (count.get(r.name)! > 1 && r.set ? { ...r, name: `${r.name} (${r.set})` } : r));
 }
 
+const SIZE_OF_DIE: Record<string, string> = { '4': 'tiny', '6': 'small', '8': 'medium', '10': 'large', '12': 'huge', '20': 'gargantuan' };
+
+/**
+ * A monster's size from its Hit Dice, which the rules tie to size (d4 Tiny, d6 Small, d8 Medium,
+ * d10 Large, d12 Huge, d20 Gargantuan). The SRD file lists every Tiny creature as Small, and every
+ * "Medium or Small" one (a knight, a mage, a vampire) as Small; the dice say what they are.
+ */
+export function sizeFromHitDice(hitDice: string | undefined, listed: string): string {
+  const die = hitDice?.match(/\d+d(\d+)/)?.[1];
+  return (die && SIZE_OF_DIE[die]) || listed;
+}
+
+const monsters = srd.monsters.map((m) => ({ ...m, size: sizeFromHitDice(m.hit_dice, m.size) }));
+
 const conditions = Object.entries(CONDITION_TEXT).map(([name, desc]) => ({ name, desc }));
 const entries = {
   spell: srd.spells,
-  monster: srd.monsters,
+  monster: monsters,
   item: [...srd.magic_items, ...srd.gear],
   rule: uniqueRules(srd.rules),
   condition: conditions,

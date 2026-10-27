@@ -390,9 +390,11 @@ const centre = (el: HTMLElement | null): [number, number] => [(el?.clientWidth ?
 
 function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: number, info: TokenInfo | undefined, p: Palette, o: { faded?: boolean; selected?: boolean; dragging?: boolean }) {
   const n = SIZE_SQUARES[t.size];
-  const r = (n * s) / 2;
-  const cx = at[0] * s + r;
-  const cy = at[1] * s + r;
+  const half = (n * s) / 2;
+  // A Tiny creature takes a square but is a small token in it (four can share one at the table).
+  const r = t.size === 'tiny' ? half * 0.62 : half;
+  const cx = at[0] * s + half;
+  const cy = at[1] * s + half;
   const fill = t.kind === 'pc' ? p.accent : t.kind === 'npc' ? p.warn : p.bad;
   ctx.save();
   ctx.globalAlpha = o.faded || info?.hidden ? 0.4 : 1;
@@ -422,7 +424,7 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.stroke();
   }
   // Initials.
-  if (s * n >= 18) {
+  if (r * 2 >= 18) {
     ctx.fillStyle = '#0b0d12';
     ctx.font = `700 ${Math.max(9, Math.min(22, r * 0.75))}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
