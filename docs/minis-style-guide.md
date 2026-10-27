@@ -51,11 +51,30 @@ bigger for small folk): they're what you recognise at token size.
 | Gnome | 98 | 34 | 14 | The biggest head for the height. |
 | Goblin | 100 | 34 | 14 | Big ears, grey-green. |
 | Skeleton | 168 | 42 | 12 | Ribs and a skull; no hair or beard. |
+| Aasimar | 170 | 45 | 13 | A halo and shining gold eyes by default. |
+| Goliath | 196 | 60 | 14 | Broad, bald, stony patches on the face. |
+| Orc | 178 | 56 | 14 | The 2024 species: broad, small tusks. (Half-orc stays for older minis.) |
 
 Builds scale the shoulders: slim ×0.86, average ×1, broad ×1.18.
 
 Card height follows the figure, so a gnome's card is shorter than an elf's on the table. Big
 creatures (large, huge) get a bigger base and card, not a different style.
+
+## Species and features
+
+The ten 2024 species (`SPECIES`) each have a few **looks** (`SPECIES_LOOKS` in
+`src/shared/minis/species.ts`): their lineages and legacies, like drow, fire goliath, abyssal
+tiefling or gold dragonborn. A look sets the body and keeps the outfit and gear.
+
+**Features** set a figure apart beyond its clothes, for species and monsters alike: ears (round,
+pointed, long), horns (curved, ram, straight, swept, antlers), a tail (devil, lizard, furred),
+tusks, wings (feathered, bat, insect), a halo, eye colour and glowing eyes, and face markings
+(freckles, patches, runes, stripes, a scar). Species are born with some (a tiefling's horns and
+tail); a mini can change any of them.
+
+- Eyes stay two dots. A colour makes them a little bigger; glowing adds a soft light round them.
+- Markings sit on the skin with no outline of their own.
+- Tusks get a fine outline: the full ink would swallow something that small.
 
 ## Silhouette first
 

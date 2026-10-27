@@ -4,11 +4,20 @@
  * gets a sensible default, so `{ ancestry: 'dwarf' }` is already a mini.
  */
 
-export const ANCESTRIES = ['human', 'dwarf', 'elf', 'halfling', 'gnome', 'half-orc', 'tiefling', 'dragonborn', 'goblin', 'skeleton'] as const;
+/** The playable species of the 2024 rules. */
+export const SPECIES = ['aasimar', 'dragonborn', 'dwarf', 'elf', 'gnome', 'goliath', 'halfling', 'human', 'orc', 'tiefling'] as const;
+/** Every ancestry a mini can have: the species, then older and monstrous ones (half-orc is from the 2014 rules). */
+export const ANCESTRIES = ['human', 'dwarf', 'elf', 'halfling', 'gnome', 'half-orc', 'tiefling', 'dragonborn', 'goblin', 'skeleton', 'aasimar', 'goliath', 'orc'] as const;
 export const OUTFITS = ['tunic', 'robe', 'leather', 'chain', 'plate', 'rags'] as const;
 export const HEADGEAR = ['none', 'hood', 'helm', 'great-helm', 'wizard-hat', 'circlet', 'crown'] as const;
-export const HAIR = ['none', 'short', 'long', 'braids', 'topknot', 'wild'] as const;
-export const BEARDS = ['none', 'short', 'long', 'forked'] as const;
+export const HAIR = ['none', 'short', 'long', 'braids', 'topknot', 'wild', 'bun', 'ponytail', 'mohawk', 'curly'] as const;
+export const BEARDS = ['none', 'short', 'long', 'forked', 'braided'] as const;
+export const EARS = ['round', 'pointed', 'long'] as const;
+export const HORNS = ['none', 'curved', 'ram', 'straight', 'swept', 'antlers'] as const;
+export const TAILS = ['none', 'devil', 'lizard', 'furred'] as const;
+export const TUSKS = ['none', 'small', 'large'] as const;
+export const WINGS = ['none', 'feathered', 'bat', 'insect'] as const;
+export const MARKINGS = ['none', 'freckles', 'patches', 'runes', 'stripes', 'scar'] as const;
 export const WEAPONS = ['none', 'sword', 'greatsword', 'axe', 'warhammer', 'mace', 'club', 'spear', 'staff', 'bow', 'crossbow', 'daggers', 'wand'] as const;
 export const OFFHAND = ['none', 'shield', 'kite-shield', 'tome', 'torch', 'orb', 'lantern'] as const;
 export const FORMS = ['humanoid', 'beast', 'dragon'] as const;
@@ -21,6 +30,45 @@ export type Beard = (typeof BEARDS)[number];
 export type Weapon = (typeof WEAPONS)[number];
 export type Offhand = (typeof OFFHAND)[number];
 export type Form = (typeof FORMS)[number];
+export type Ears = (typeof EARS)[number];
+export type Horns = (typeof HORNS)[number];
+export type Tail = (typeof TAILS)[number];
+export type Tusks = (typeof TUSKS)[number];
+export type Wings = (typeof WINGS)[number];
+export type Markings = (typeof MARKINGS)[number];
+
+/** What sets a figure apart beyond its clothes: a species' look, or a monster's. Each is optional. */
+export interface FeatureSpec {
+  ears?: Ears;
+  horns?: Horns;
+  hornColour?: Colour;
+  tail?: Tail;
+  tusks?: Tusks;
+  wings?: Wings;
+  wingColour?: Colour;
+  /** A ring of light over the head (aasimar). */
+  halo?: boolean;
+  eyes?: Colour;
+  /** Eyes that shine. */
+  glow?: boolean;
+  markings?: Markings;
+  markingColour?: Colour;
+}
+
+export interface Features {
+  ears: Ears;
+  horns: Horns;
+  hornColour: string;
+  tail: Tail;
+  tusks: Tusks;
+  wings: Wings;
+  wingColour: string;
+  halo: boolean;
+  eyes: string;
+  glow: boolean;
+  markings: Markings;
+  markingColour: string;
+}
 
 /** A colour: a palette name from the style guide (`steel`, `crimson`…) or a hex like `#3d6f9a`. */
 export type Colour = string;
@@ -41,6 +89,7 @@ export interface MiniSpec {
   offhand?: Offhand;
   /** Beasts' and dragons' colour (a dragon's scales). */
   coat?: Colour;
+  features?: FeatureSpec;
 }
 
 /** A mini with every part decided, ready to draw. */
@@ -57,6 +106,7 @@ export interface Mini {
   weapon: Weapon;
   offhand: Offhand;
   coat: string;
+  features: Features;
 }
 
 export class MiniError extends Error {}
@@ -98,6 +148,31 @@ export function readMiniSpec(raw: unknown): MiniSpec {
     weapon: oneOf(WEAPONS, r.weapon, 'weapon'),
     offhand: oneOf(OFFHAND, r.offhand, 'offhand'),
     coat: colour(r.coat, 'coat'),
+    features: readFeatures(obj(r.features, 'features')),
   };
   return known(out);
+
+  function readFeatures(raw: Record<string, unknown> | undefined): FeatureSpec | undefined {
+    if (!raw) return undefined;
+    const flag = (v: unknown, what: string): boolean | undefined => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === 'boolean') return v;
+      throw new MiniError(`${what} is true or false`);
+    };
+    const features = known({
+      ears: oneOf(EARS, raw.ears, 'ears'),
+      horns: oneOf(HORNS, raw.horns, 'horns'),
+      hornColour: colour(raw.hornColour, 'horn colour'),
+      tail: oneOf(TAILS, raw.tail, 'tail'),
+      tusks: oneOf(TUSKS, raw.tusks, 'tusks'),
+      wings: oneOf(WINGS, raw.wings, 'wings'),
+      wingColour: colour(raw.wingColour, 'wing colour'),
+      halo: flag(raw.halo, 'halo'),
+      eyes: colour(raw.eyes, 'eyes'),
+      glow: flag(raw.glow, 'glow'),
+      markings: oneOf(MARKINGS, raw.markings, 'markings'),
+      markingColour: colour(raw.markingColour, 'marking colour'),
+    });
+    return Object.keys(features).length ? features : undefined;
+  }
 }

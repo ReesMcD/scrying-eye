@@ -8,7 +8,7 @@ export const STARTER_MINIS: ReadonlyArray<{ name: string; mini: MiniSpec }> = [
   { name: 'Rogue', mini: { ancestry: 'halfling', outfit: { kind: 'leather', colour: 'forest' }, cloak: 'charcoal', headgear: 'hood', weapon: 'daggers' } },
   { name: 'Warlock', mini: { ancestry: 'tiefling', outfit: { kind: 'robe', colour: 'plum', trim: 'gold' }, weapon: 'wand', offhand: 'orb', hair: { style: 'long', colour: 'hair-black' } } },
   { name: 'Paladin', mini: { ancestry: 'dragonborn', skin: 'scales-blue', outfit: { kind: 'plate', colour: 'silver', trim: 'gold' }, cloak: 'crimson', weapon: 'greatsword' } },
-  { name: 'Barbarian', mini: { ancestry: 'half-orc', outfit: { kind: 'leather', colour: 'charcoal' }, weapon: 'axe', hair: { style: 'topknot', colour: 'hair-black' } } },
+  { name: 'Barbarian', mini: { ancestry: 'orc', outfit: { kind: 'leather', colour: 'charcoal' }, weapon: 'axe', hair: { style: 'topknot', colour: 'hair-black' } } },
   { name: 'Ranger', mini: { ancestry: 'human', skin: 'skin-brown', outfit: { kind: 'leather', colour: 'moss' }, cloak: 'forest', weapon: 'bow', hair: { style: 'braids', colour: 'hair-black' } } },
   { name: 'Artificer', mini: { ancestry: 'gnome', outfit: { kind: 'leather', colour: 'rust' }, weapon: 'crossbow', offhand: 'lantern', hair: { style: 'wild', colour: 'hair-blond' } } },
   { name: 'Bard', mini: { ancestry: 'human', skin: 'skin-tan', outfit: { kind: 'tunic', colour: 'teal', trim: 'gold' }, cloak: 'maroon', weapon: 'daggers', hair: { style: 'long', colour: 'hair-auburn' } } },
