@@ -31,6 +31,8 @@ export interface SceneBox {
   h: number;
   /** The door's state, for its colour. */
   state?: Terrain['state'];
+  /** What it is, in the map's words (asset and label): picks a model for it ("barrels", "table"). */
+  what?: string;
 }
 
 export interface SceneProp {
@@ -214,7 +216,8 @@ export function buildScene(map: BattleMap): MapScene {
         }
         // Barrels and crates are wood; sarcophagi, tombs and low walls are stone.
         const part = /\b(sarcophag\w*|coffins?|tombs?|stone|statue|wall|altar)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? 'altar' : 'cover';
-        for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h });
+        const what = `${t.asset ?? ''} ${t.label ?? ''}`.trim().toLowerCase();
+        for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h, ...(what ? { what } : {}) });
         break;
       }
       case 'object': {
@@ -226,9 +229,9 @@ export function buildScene(map: BattleMap): MapScene {
           const what = `${t.asset ?? ''} ${t.label ?? ''}`.toLowerCase();
           if (kind === 'tree') props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, 3 + seed), seed });
           else if (kind) props.push({ kind, x: x + 0.5, z: y + 0.5, y: level(x, y), h: feet(t.height, kind === 'pillar' ? WALL_HEIGHT : kind === 'statue' ? 1.5 : kind === 'bush' ? 0.6 : 0.7), seed });
-          else if (/\b(chest|coffer|strongbox)\b/.test(what)) boxes.push({ part: 'chest', x: x + 0.22, z: y + 0.3, w: 0.56, d: 0.4, y: level(x, y), h: feet(t.height, 0.42) });
-          else if (/\b(altar|table|desk|bench)\b/.test(what)) boxes.push({ part: 'altar', x: x + 0.06, z: y + 0.18, w: 0.88, d: 0.64, y: level(x, y), h: feet(t.height, 0.65) });
-          else boxes.push({ part: 'object', x: x + 0.08, z: y + 0.08, w: 0.84, d: 0.84, y: level(x, y), h: feet(t.height, 1) });
+          else if (/\b(chest|coffer|strongbox)\b/.test(what)) boxes.push({ part: 'chest', x: x + 0.22, z: y + 0.3, w: 0.56, d: 0.4, y: level(x, y), h: feet(t.height, 0.42), what });
+          else if (/\b(altar|table|desk|bench)\b/.test(what)) boxes.push({ part: 'altar', x: x + 0.06, z: y + 0.18, w: 0.88, d: 0.64, y: level(x, y), h: feet(t.height, 0.65), what });
+          else boxes.push({ part: 'object', x: x + 0.08, z: y + 0.08, w: 0.84, d: 0.84, y: level(x, y), h: feet(t.height, 1), what });
         }
         break;
       }
