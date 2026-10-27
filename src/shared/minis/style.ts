@@ -1,16 +1,10 @@
 import type { Ancestry, Mini, MiniSpec } from './spec.js';
 
 /**
- * The style guide, as numbers (docs/style-guide.md says why): one ink, one paper, a small palette
- * of named colours, and each ancestry's proportions. Every part is drawn from these, so anything
- * new fits with what's there.
+ * What every art style shares (docs/minis-style-guide.md says why): the named colours a mini is
+ * described in, each ancestry's proportions (they set how tall its card stands next to others),
+ * and how a mini's missing parts are decided. How it's drawn is the art style's (`styles.ts`).
  */
-
-/** The outline on every shape, and the card it's cut from. */
-export const INK = '#2b2118';
-export const INK_WIDTH = 2.6;
-export const PAPER = '#fbf6ea';
-export const PAPER_EDGE = '#c9bea7';
 
 /** Named colours: muted, earthy, readable small and on a dark dungeon floor. */
 export const PALETTE: Record<string, string> = {

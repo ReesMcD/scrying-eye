@@ -6,7 +6,7 @@ private link; the DM makes the rest on the Minis page. One look for everyone.
 
 ![Sample sheet](minis-sheet.png)
 
-The numbers behind this guide live in `src/shared/minis/style.ts`. Change them there, not in a part.
+This is the **paper** art style, the app's default. Its ink and card live in `src/shared/minis/paper/draw.ts`; the colours and proportions every style shares live in `src/shared/minis/style.ts`. Change them there, not in a part. Other styles can be added and swapped in (see *Art styles* below).
 
 ## The look in one line
 
@@ -78,7 +78,21 @@ Four-legged animals use the `beast` form: drawn side-on, the same ink and paper.
 ## Adding a part
 
 1. Add the name to its list in `src/shared/minis/spec.ts` (e.g. `HEADGEAR`).
-2. Draw it in `src/shared/minis/render.ts` with the `shape` helpers only (they apply the ink).
+2. Draw it in the paper style (`src/shared/minis/paper/`) with the `shape` helpers only (they apply the ink), and in any other style.
 3. If it reaches above the head, add it to `above()` so the card grows.
 4. Look at it in the Minis page builder next to the others.
 5. `npm test`: every ancestry draws every weapon without broken numbers.
+
+## Art styles
+
+A mini (`MiniSpec`) says *what* a figure is; an art style says how it's drawn. The same saved
+minis, monsters and species then draw in whichever style the app uses.
+
+- `src/shared/minis/styles.ts` has the `MiniArtStyle` interface, the list of styles
+  (`ART_STYLES`) and the one in use (`DEFAULT_ART_STYLE`).
+- A style is a folder like `paper/` exporting a `MiniArtStyle`: `render(mini)` returns an SVG in
+  card units (feet at y = 200, a human about 168 tall), so cards of any style stand at the same
+  height on the board.
+- To add one: make the folder, add it to `ART_STYLES`, and run `npm test`: the tests draw every
+  ancestry, part and creature form in every style. To swap, change `DEFAULT_ART_STYLE`.
+

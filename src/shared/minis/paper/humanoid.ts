@@ -1,51 +1,7 @@
-import type { Mini, MiniSpec } from './spec.js';
-import { INK, INK_WIDTH, PALETTE, PAPER, PAPER_EDGE, proportionsOf, resolveMini } from './style.js';
-
-/**
- * A mini as an SVG: a figure drawn in flat colours with an ink outline, cut out of paper with a
- * white margin and a tab at its feet for the stand. Plain SVG with no scripts or external files,
- * so it works in a browser, on a server (sharp/librsvg) and in a Discord post.
- *
- * Card units: 120 wide, the feet at y = 200, x = 60 the middle. The view box is trimmed to the
- * figure (with whatever it holds over its head), so a dwarf's card is shorter than an elf's.
- */
-
-export interface RenderedMini {
-  svg: string;
-  /** The view box's size, in card units: the card's aspect, and its height relative to others. */
-  width: number;
-  height: number;
-}
-
-export interface RenderOptions {
-  /** A prefix for the SVG's ids, unique on the page when several minis are inlined. */
-  id?: string;
-  /** Cut out of paper (default), or just the figure. */
-  paper?: boolean;
-}
-
-const f = (n: number) => String(Math.round(n * 10) / 10);
-const CX = 60;
-const FEET = 200;
-
-/** Outlined shapes: everything a part draws goes through these, so the ink is the same everywhere. */
-const shape = {
-  poly: (points: Array<[number, number]>, fill: string) => `<polygon points="${points.map(([x, y]) => `${f(x)},${f(y)}`).join(' ')}" fill="${fill}"/>`,
-  path: (d: string, fill: string) => `<path d="${d}" fill="${fill}"/>`,
-  circle: (x: number, y: number, r: number, fill: string) => `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" fill="${fill}"/>`,
-  ellipse: (x: number, y: number, rx: number, ry: number, fill: string) => `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(ry)}" fill="${fill}"/>`,
-  rect: (x: number, y: number, w: number, h: number, fill: string, r = 1.5) => `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(r)}" fill="${fill}"/>`,
-  line: (x1: number, y1: number, x2: number, y2: number, width = INK_WIDTH, stroke = INK) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${stroke}" stroke-width="${f(width)}"/>`,
-  /** A detail line with no outline of its own (rib, belt stitch). */
-  detail: (d: string, stroke: string, width = 1.6) => `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${f(width)}"/>`,
-};
-
-/** Lighter or darker, for a highlight or a shadow side. */
-function shade(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.max(0, Math.min(255, Math.round(amount > 0 ? v + (255 - v) * amount : v * (1 + amount)))));
-  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
+import type { Mini } from '../spec.js';
+import type { Drawn } from './index.js';
+import { proportionsOf } from '../style.js';
+import { CX, f, FEET, INK, PALETTE, shade, shape } from './draw.js';
 
 /** Where everything on a humanoid hangs, from its proportions. */
 function skeletonOf(m: Mini) {
@@ -325,97 +281,10 @@ function above(m: Mini, b: Bones): number {
   return Math.max(hat, horn, hair);
 }
 
-/** A beast on four legs, side on: wolves, bears, boars, cats. */
-function beast(m: Mini): { art: string; top: number; left: number; right: number } {
-  const c = m.coat;
-  const dark = shade(c, -0.3);
-  const bodyY = 168;
-  const out = [
-    shape.path(`M${f(16)},${f(bodyY - 6)} Q${f(4)},${f(bodyY - 26)} ${f(2)},${f(bodyY - 14)}`, 'none'),
-    shape.rect(26, bodyY + 4, 9, 28, dark, 3),
-    shape.rect(80, bodyY + 4, 9, 28, dark, 3),
-    shape.ellipse(58, bodyY, 40, 17, c),
-    shape.rect(34, bodyY + 6, 9, 26, c, 3),
-    shape.rect(70, bodyY + 6, 9, 26, c, 3),
-    shape.path(`M${f(18)},${f(bodyY - 4)} Q${f(4)},${f(bodyY - 4)} ${f(6)},${f(bodyY - 22)} Q${f(14)},${f(bodyY - 12)} ${f(22)},${f(bodyY - 10)} Z`, c),
-    shape.ellipse(98, bodyY - 18, 15, 13, c),
-    shape.path(`M${f(106)},${f(bodyY - 22)} L${f(124)},${f(bodyY - 14)} Q${f(124)},${f(bodyY - 6)} ${f(108)},${f(bodyY - 8)} Z`, c),
-    shape.poly([[90, bodyY - 28], [94, bodyY - 42], [100, bodyY - 29]], c),
-    shape.circle(104, bodyY - 21, 1.8, INK),
-    shape.circle(123, bodyY - 13, 2, INK),
-  ];
-  return { art: out.join(''), top: bodyY - 46, left: 0, right: 128 };
-}
-
-/** A dragon, side on: wings up, neck raised, tail curling behind. Scales in its coat colour. */
-function dragon(m: Mini): { art: string; top: number; left: number; right: number } {
-  const c = m.coat;
-  const dark = shade(c, -0.32);
-  const belly = shade(c, 0.4);
-  const wing = shade(c, -0.15);
-  const y = 160;
-  const horn = PALETTE.bone!;
-  const out = [
-    // Tail, then the far wing and far legs (darker, behind).
-    shape.path(`M${f(52)},${f(y - 4)} Q${f(20)},${f(y + 2)} ${f(10)},${f(y - 20)} Q${f(6)},${f(y - 34)} ${f(-6)},${f(y - 30)} L${f(2)},${f(y - 22)} Q${f(4)},${f(y - 8)} ${f(30)},${f(y + 10)} Q${f(44)},${f(y + 14)} ${f(56)},${f(y + 10)} Z`, c),
-    shape.path(`M${f(92)},${f(y - 14)} L${f(66)},${f(y - 92)} L${f(40)},${f(y - 70)} Q${f(52)},${f(y - 50)} ${f(48)},${f(y - 30)} Q${f(64)},${f(y - 36)} ${f(72)},${f(y - 20)} Z`, dark),
-    shape.rect(56, y + 4, 11, 34, dark, 4),
-    shape.rect(98, y + 4, 11, 34, dark, 4),
-    // Body, belly, near legs with claws.
-    shape.ellipse(82, y, 40, 19, c),
-    shape.path(`M${f(52)},${f(y + 8)} Q${f(82)},${f(y + 24)} ${f(114)},${f(y + 6)} Q${f(84)},${f(y + 14)} ${f(52)},${f(y + 8)} Z`, belly),
-    shape.rect(64, y + 6, 13, 34, c, 4),
-    shape.rect(106, y + 4, 13, 35, c, 4),
-    shape.poly([[62, y + 40], [66, y + 34], [70, y + 40]], horn),
-    shape.poly([[104, y + 40], [108, y + 34], [112, y + 40]], horn),
-    // Neck rising to the head.
-    shape.path(`M${f(104)},${f(y - 14)} Q${f(128)},${f(y - 30)} ${f(128)},${f(y - 62)} L${f(144)},${f(y - 60)} Q${f(142)},${f(y - 20)} ${f(118)},${f(y + 2)} Z`, c),
-    shape.path(`M${f(120)},${f(y - 6)} Q${f(136)},${f(y - 26)} ${f(136)},${f(y - 58)}`, 'none'),
-    // Head: skull, snout, jaw, horns, eye.
-    shape.poly([[130, y - 74], [124, y - 92], [138, y - 78]], horn),
-    shape.poly([[138, y - 76], [140, y - 96], [146, y - 76]], horn),
-    shape.path(`M${f(124)},${f(y - 66)} Q${f(130)},${f(y - 82)} ${f(148)},${f(y - 78)} L${f(172)},${f(y - 70)} Q${f(176)},${f(y - 64)} ${f(170)},${f(y - 60)} L${f(144)},${f(y - 56)} Q${f(128)},${f(y - 54)} ${f(124)},${f(y - 66)} Z`, c),
-    shape.path(`M${f(146)},${f(y - 58)} L${f(168)},${f(y - 58)} Q${f(162)},${f(y - 50)} ${f(146)},${f(y - 52)} Z`, belly),
-    shape.circle(144, y - 70, 2.6, '#f6d04d'),
-    shape.circle(168, y - 67, 1.4, INK),
-    // Near wing, raised: bones and a scalloped edge.
-    shape.path(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} L${f(124)},${f(y - 112)} Q${f(122)},${f(y - 92)} ${f(112)},${f(y - 84)} Q${f(110)},${f(y - 64)} ${f(98)},${f(y - 58)} Q${f(100)},${f(y - 38)} ${f(98)},${f(y - 14)} Z`, wing),
-    shape.detail(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} M${f(86)},${f(y - 70)} L${f(124)},${f(y - 112)} M${f(90)},${f(y - 52)} L${f(112)},${f(y - 84)}`, dark, 2),
-  ];
-  return { art: out.join(''), top: y - 114, left: -10, right: 180 };
-}
-
-/** Draws a mini as an SVG card. */
-export function renderMini(spec: MiniSpec, options: RenderOptions = {}): RenderedMini {
-  const m = resolveMini(spec);
-  const id = options.id ?? 'mini';
-  const paper = options.paper !== false;
-  let art: string;
-  let top: number;
-  let left = 0;
-  let right = 120;
-  if (m.form === 'beast' || m.form === 'dragon') {
-    const b = m.form === 'dragon' ? dragon(m) : beast(m);
-    art = b.art;
-    top = b.top;
-    left = b.left;
-    right = b.right;
-  } else {
-    const b = skeletonOf(m);
-    const w = weapon(m, b);
-    art = [cloakBack(m, b), hairBack(m, b), legs(m, b), torso(m, b), arms(m, b), head(m, b), hairFront(m, b), beard(m, b), headgear(m, b), horns(m, b), w.art, offhand(m, b)].join('');
-    top = b.top - Math.max(above(m, b), w.reach);
-  }
-  const pad = 12;
-  const vx = left - pad;
-  const vy = Math.floor(top - pad);
-  const width = right - left + pad * 2;
-  const height = FEET + pad + 2 - vy;
-  const tab = paper ? `<rect x="${f(CX - 26)}" y="${FEET - 2}" width="52" height="${pad + 4}" fill="${PAPER}"/>` : '';
-  const figure = `<g stroke="${INK}" stroke-width="${INK_WIDTH}" stroke-linejoin="round" stroke-linecap="round">${art}</g>`;
-  const body = paper
-    ? `<defs><filter id="${id}-cut" x="-15%" y="-10%" width="130%" height="120%" color-interpolation-filters="sRGB"><feMorphology in="SourceAlpha" operator="dilate" radius="6.5" result="edgeShape"/><feFlood flood-color="${PAPER_EDGE}"/><feComposite in2="edgeShape" operator="in" result="edge"/><feMorphology in="SourceAlpha" operator="dilate" radius="5" result="paperShape"/><feFlood flood-color="${PAPER}"/><feComposite in2="paperShape" operator="in" result="paper"/><feMerge><feMergeNode in="edge"/><feMergeNode in="paper"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#${id}-cut)">${tab}${figure}</g>`
-    : figure;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(vx)} ${f(vy)} ${f(width)} ${f(height)}" width="${f(width * 2)}" height="${f(height * 2)}">${body}</svg>`;
-  return { svg, width, height };
+/** A figure on two legs, front on: everything from the cloak behind to what it holds. */
+export function humanoid(m: Mini): Drawn {
+  const b = skeletonOf(m);
+  const w = weapon(m, b);
+  const art = [cloakBack(m, b), hairBack(m, b), legs(m, b), torso(m, b), arms(m, b), head(m, b), hairFront(m, b), beard(m, b), headgear(m, b), horns(m, b), w.art, offhand(m, b)].join('');
+  return { art, top: b.top - Math.max(above(m, b), w.reach), left: 0, right: 120 };
 }

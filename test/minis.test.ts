@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ANCESTRIES, MiniError, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
+import { ANCESTRIES, ART_STYLES, DEFAULT_ART_STYLE, FORMS, MiniError, type ArtStyleId, miniForCreature, PALETTE, readMiniSpec, renderMini, resolveMini, STARTER_MINIS, WEAPONS } from '../src/shared/minis/index.js';
 
 test('a page’s mini block keeps the parts it knows and drops the rest', () => {
   const spec = readMiniSpec({ ancestry: 'dwarf', beard: 'forked', hair: { colour: 'hair-copper' }, cloak: 'none', sparkles: true });
@@ -93,4 +93,14 @@ test('the quick-battle monsters each get their own figure: goblin, guard, giant 
   assert.deepEqual(miniForCreature({ name: 'Young Blue Dragon' }), { form: 'dragon', coat: 'navy' });
   assert.notEqual(miniForCreature({ name: 'Dragonborn Knight' }).form, 'dragon');
   for (const name of ['Hill Giant', 'Adult Red Dragon']) assert.doesNotMatch(renderMini(miniForCreature({ name })).svg, /NaN|undefined/, name);
+});
+
+test('every art style draws every ancestry, part and form, at the same card scale', () => {
+  for (const style of Object.keys(ART_STYLES) as ArtStyleId[]) {
+    for (const ancestry of ANCESTRIES)
+      for (const weapon of WEAPONS) assert.doesNotMatch(renderMini({ ancestry, weapon }, { style }).svg, /NaN|undefined/, `${style}: ${ancestry} with ${weapon}`);
+    for (const form of FORMS) assert.doesNotMatch(renderMini({ form }, { style }).svg, /NaN|undefined/, `${style}: ${form}`);
+    assert.equal(renderMini({}, { style, paper: false }).svg.includes('<svg'), true);
+  }
+  assert.equal(renderMini({}).svg, renderMini({}, { style: DEFAULT_ART_STYLE }).svg, 'the default style is used when none is named');
 });
