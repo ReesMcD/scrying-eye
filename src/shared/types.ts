@@ -882,6 +882,17 @@ export interface JoinLink {
   publicUrlSet: boolean;
 }
 
+/** Why players outside Tailscale can't open the link yet. */
+export type FunnelProblem = 'no-tailscale' | 'stopped' | 'no-https' | 'off' | 'other-port';
+
+/** Whether the players' link is public (Tailscale Funnel serving the players' port). */
+export type FunnelState =
+  | { on: true; publicUrl: string; message: string }
+  | { on: false; problem: FunnelProblem; publicUrl: string | null; message: string };
+
+/** GET/POST /players/funnel: the state, the address saved for links, and Tailscale's approval page when it asks for one. */
+export type FunnelStatus = FunnelState & { saved: string | null; approve?: string | null };
+
 // --- Polls (#43) ---------------------------------------------------------------------------------
 
 /** When a poll posts: once at a local date and time, or every week (in transcript.timezone). */

@@ -1,3 +1,4 @@
+import { systemTailscale, type TailscaleCli } from './funnel.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
@@ -54,6 +55,8 @@ export interface ApiOptions {
   httpFetch?: typeof fetch;
   /** For tests: the monster-turn assistant (default: Claude, when turned on). */
   turnAdvisor?: TurnAdvisor;
+  /** For tests: Tailscale on this Mac (the players' public link). */
+  tailscale?: TailscaleCli;
   /** The wiki's encounters (default: from the upload settings and WIKI_UPLOAD_TOKEN). */
   wikiEncounters?: WikiEncounters;
   /** The wiki's dungeons (default: the same wiki and key). */
@@ -326,6 +329,11 @@ export function createApi(opts: ApiOptions): Hono {
       links: () => {
         const players = configSchema.parse(opts.configStore.read().config ?? {}).players;
         return { publicUrl: players.public_url, port: players.port };
+      },
+      tailscale: opts.tailscale ?? systemTailscale(),
+      savePublicUrl: (url) => {
+        const config = opts.configStore.read().config;
+        if (config) opts.configStore.write({ ...config, players: { ...config.players, public_url: url } });
       },
       ...(opts.httpFetch ? { doFetch: opts.httpFetch } : {}),
       ...(opts.bot ? { bot: opts.bot } : {}),

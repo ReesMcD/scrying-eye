@@ -1,3 +1,4 @@
+import { funnelState, turnOnFunnel, type FunnelState, type TailscaleCli } from './funnel.js';
 import { Hono, type Context } from 'hono';
 import { EncounterError } from '../encounter/rules.js';
 import type { EncounterStore } from '../encounter/store.js';
@@ -26,6 +27,8 @@ import type { WikiDungeons } from '../encounter/dungeonWiki.js';
  *   POST /encounter/link                     a new link (the old one stops working)
  *   POST /encounter/post                     post the join link in Discord
  *   POST /players/check                      { public_url }: does the public address reach the players' page?
+ *   GET  /players/funnel                     is the players' link public (Tailscale Funnel on, for our port)?
+ *   POST /players/funnel                     turn Funnel on for the players' port, and save its address
  *   POST /encounter/suggest                  { id }: Claude's idea for a monster's turn (when turned on)
  */
 /** Where players join: the public address (Funnel) when set, and this Mac's own address for testing. */
@@ -50,10 +53,13 @@ export interface EncounterRouteDeps {
   advisor?: AdvisorSource;
   /** Each campaign's party, from the roster (for quick battles). */
   campaigns?: () => QuickBattleOptions['campaigns'];
+  /** Tailscale on this Mac, for the players' public link; and where to save the address it gives. */
+  tailscale?: TailscaleCli;
+  savePublicUrl?: (url: string) => void;
 }
 
 export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps): Hono {
-  const { wiki, dungeons, links, doFetch = fetch, bot, advisor } = deps;
+  const { wiki, dungeons, links, doFetch = fetch, bot, advisor, tailscale, savePublicUrl } = deps;
   const r = new Hono();
   const failed = (c: Context, err: unknown) => {
     if (err instanceof WikiEncountersError) return c.json({ error: err.message }, err.status as 404 | 409 | 502);
@@ -192,6 +198,22 @@ export function encounterRoutes(store: EncounterStore, deps: EncounterRouteDeps)
     } catch (err) {
       return c.json({ ok: false, message: `Couldn't reach it: ${(err as Error).message}. Is Funnel on? (tailscale funnel --bg ${links().port})` });
     }
+  });
+
+  // The public link: Funnel's state, and turning it on. Once it's on, its address is saved, so the
+  // link players get is always the one that works (no copying it out of Terminal).
+  const remember = (state: FunnelState) => {
+    if (state.on && state.publicUrl !== links().publicUrl) savePublicUrl?.(state.publicUrl);
+    return { ...state, saved: state.on ? state.publicUrl : (links().publicUrl ?? null) };
+  };
+  r.get('/players/funnel', async (c) => {
+    if (!tailscale) return c.json({ on: false, problem: 'no-tailscale', publicUrl: null, message: 'Tailscale isn’t available here', saved: links().publicUrl ?? null });
+    return c.json(remember(await funnelState(tailscale, links().port)));
+  });
+  r.post('/players/funnel', async (c) => {
+    if (!tailscale) return c.json({ error: 'Tailscale isn’t available here' }, 409);
+    const { state, approve } = await turnOnFunnel(tailscale, links().port);
+    return c.json({ ...remember(state), approve });
   });
 
   r.post('/encounter/suggest', async (c) => {

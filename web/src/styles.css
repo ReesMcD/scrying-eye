@@ -488,3 +488,4 @@ input.narrow { width: 64px; display: inline-block; }
   .live .battle-map-zoom { bottom: 132px; }
   .live-order { right: 64px; }
 }
+.join-blocked { display: grid; gap: 8px; justify-items: start; margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 14%, transparent); }

@@ -556,7 +556,12 @@ What's in it:
   - They set only their own character's conditions, move their own token
     or a friend's (never a monster's), roll dice for the table and place their own spell area (hidden monsters, the
     DM's map notes and anything under the fog never reach their phones).
-  - To reach their phones it needs a public address: see **Settings → Encounters** (Tailscale Funnel).
+  - To reach their phones (players don't need Tailscale) the link has to be public, through
+    Tailscale Funnel on this Mac. Press **Make the link public** on the encounter's Players' link
+    (or **Set it up for me** in **Settings → Encounters**): the app turns Funnel on for the players'
+    page and saves its address. The first time, Tailscale asks you to approve Funnel once in the
+    browser (the app shows the link). Until it's public, the app says why and won't hand out a link
+    that only works on this Mac.
   - **Posting the link:**
     - **From Discord:** `/encounter start` (pick one prepared in the wiki as you type, or type a
       name for a blank one) posts the link with a **Join** button in that channel. `/encounter link`
