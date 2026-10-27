@@ -62,6 +62,8 @@ export const play = {
     if (!res.ok) throw new PlayError(res.status, `Error ${res.status}`);
     return res.blob();
   },
+  /** Where the DM's own controls are (over Tailscale), or null when the public address isn't set. */
+  dmUrl: () => call<{ url: string | null }>('/dm'),
   join: (combatantId: string | null) => call<{ token: string; view: PlayerView }>('/join', { method: 'POST', body: JSON.stringify({ combatantId }) }),
   act: (request: PlayerRequest) => call<PlayerView>('/act', { method: 'POST', body: JSON.stringify(request) }),
   /** My character's paper mini (null: back to the default figure), kept for next time. */

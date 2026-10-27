@@ -131,10 +131,36 @@ function Join({ view, onJoin }: { view: PlayerView; onJoin: (id: string | null) 
           </li>
         ))}
       </ul>
-      <button className="link" onClick={() => onJoin(null)}>
-        Just watch
-      </button>
+      <div className="row">
+        <button className="link" onClick={() => onJoin(null)}>
+          Just watch
+        </button>
+        <DmLink />
+      </div>
     </div>
+  );
+}
+
+/** The DM opens their own controls (the live encounter page), over Tailscale with the app password. */
+function DmLink() {
+  const [note, setNote] = useState('');
+  const open = async () => {
+    setNote('');
+    try {
+      const { url } = await play.dmUrl();
+      if (url) window.location.href = url;
+      else setNote('Set the public address in Settings → Encounters first.');
+    } catch (e) {
+      setNote((e as Error).message);
+    }
+  };
+  return (
+    <>
+      <button className="link" onClick={() => void open()} title="Opens your DM controls; this device needs Tailscale on">
+        I'm the DM
+      </button>
+      {note && <span className="muted small">{note}</span>}
+    </>
   );
 }
 

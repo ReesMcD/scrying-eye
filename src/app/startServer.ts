@@ -152,7 +152,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const players =
     opts.players === false
       ? Promise.resolve(null)
-      : startPlayerServer(encounters, { port: playerPort, webDist, art: mapArt, minis }).catch((err: Error) => {
+      : startPlayerServer(encounters, { port: playerPort, webDist, art: mapArt, minis, dmUrl: () => dmControlsUrl(configStore.read().config?.players.public_url, opts.port ?? 4400) }).catch((err: Error) => {
           log(`The players' page couldn't start on port ${playerPort}: ${err.message}. Change players.port in Settings.`);
           return null;
         });
@@ -183,4 +183,17 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       reject(err);
     }
   });
+}
+
+/**
+ * The DM's live encounter page over Tailscale: the Mac's own name (from the players' public address,
+ * which is its Tailscale name) on the app's port. Only devices on the DM's Tailscale can open it.
+ */
+export function dmControlsUrl(publicUrl: string | undefined, port: number): string | null {
+  if (!publicUrl) return null;
+  try {
+    return `http://${new URL(publicUrl).hostname}:${port}/#/encounters`;
+  } catch {
+    return null;
+  }
 }

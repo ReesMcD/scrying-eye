@@ -28,6 +28,7 @@ import { playerView } from './view.js';
  *   PUT  /p/:code/mini            { mini }: your own character's paper mini, kept for next time
  *   GET  /p/:code/art             the map's pictures (from the DM's art folder), if any
  *   GET  /p/:code/art/:id         one of those pictures, and only those
+ *   GET  /p/:code/dm              where the DM's own controls are (over Tailscale), for "I'm the DM"
  *   GET  /mini/:token             a player's page for their character's paper mini
  *   GET  /m/:token                that character's name and mini
  *   PUT  /m/:token                { mini }: saves it (the link opens that one character, nothing else)
@@ -83,7 +84,7 @@ const bearer = (c: Context) => {
   return h.startsWith('Bearer ') ? h.slice(7).trim() : '';
 };
 
-export function playerApp(store: EncounterStore, opts: { webDist: string; limiter?: RateLimiter; art?: MapArt; minis?: MiniStore }): Hono {
+export function playerApp(store: EncounterStore, opts: { webDist: string; limiter?: RateLimiter; art?: MapArt; minis?: MiniStore; dmUrl?: () => string | null }): Hono {
   const app = new Hono();
   const limiter = opts.limiter ?? new RateLimiter();
   const webDist = resolve(opts.webDist);
@@ -160,6 +161,12 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
     if (v instanceof Response) return v;
     const plan = opts.art?.plan(v.state.map);
     return artImage(plan ? opts.art!.file(c.req.param('id'), new Set(plan.ids)) : undefined);
+  });
+
+  // The DM's controls stay private (Tailscale only); this only says where they are.
+  app.get('/p/:code/dm', (c) => {
+    if (!store.isOpen(c.req.param('code'))) return gone(c);
+    return c.json({ url: opts.dmUrl?.() ?? null });
   });
 
   app.post('/p/:code/join', async (c) => {
@@ -247,8 +254,8 @@ export function playerApp(store: EncounterStore, opts: { webDist: string; limite
 }
 
 /** Starts the player server on 127.0.0.1:<port>. */
-export function startPlayerServer(store: EncounterStore, opts: { port: number; webDist: string; art?: MapArt; minis?: MiniStore }): Promise<{ port: number; close(): Promise<void> }> {
-  const app = playerApp(store, { webDist: opts.webDist, ...(opts.art ? { art: opts.art } : {}), ...(opts.minis ? { minis: opts.minis } : {}) });
+export function startPlayerServer(store: EncounterStore, opts: { port: number; webDist: string; art?: MapArt; minis?: MiniStore; dmUrl?: () => string | null }): Promise<{ port: number; close(): Promise<void> }> {
+  const app = playerApp(store, { webDist: opts.webDist, ...(opts.art ? { art: opts.art } : {}), ...(opts.minis ? { minis: opts.minis } : {}), ...(opts.dmUrl ? { dmUrl: opts.dmUrl } : {}) });
   return new Promise((resolvePromise, reject) => {
     let server: ServerType;
     try {

@@ -237,3 +237,15 @@ test('table dice go to Discord only when the DM turns posting on, and never secr
   store.act({ type: 'roll', expression: '1d6', secret: true });
   assert.deepEqual(posted, ['DM 8']);
 });
+
+test('"I’m the DM" on the encounter page points at the DM’s own controls over Tailscale', async () => {
+  const { dmControlsUrl } = await import('../src/app/startServer.js');
+  assert.equal(dmControlsUrl('https://mac-mini.tail1234.ts.net', 4400), 'http://mac-mini.tail1234.ts.net:4400/#/encounters');
+  assert.equal(dmControlsUrl(undefined, 4400), null);
+  const dataDir = mkdtempSync(join(tmpdir(), 'dm-link-'));
+  const store = new EncounterStore(dataDir, deps(), () => {});
+  const code = store.start(fight()).join!.code;
+  const app = playerApp(store, { webDist: join(dataDir, 'web'), dmUrl: () => 'http://mac-mini.tail1234.ts.net:4400/#/encounters' });
+  assert.deepEqual(await (await app.request(`/p/${code}/dm`)).json(), { url: 'http://mac-mini.tail1234.ts.net:4400/#/encounters' });
+  assert.equal((await app.request('/p/not-the-code/dm')).status, 410);
+});
