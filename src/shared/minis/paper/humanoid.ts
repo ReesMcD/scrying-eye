@@ -30,8 +30,8 @@ function cloakBack(m: Mini, b: Bones): string {
 function hairBack(m: Mini, b: Bones): string {
   const { x, y, r } = b.head;
   const c = m.hair.colour;
-  if (m.headgear === 'great-helm') return '';
   if (m.hair.style === 'long' || m.hair.style === 'wild') return shape.path(`M${f(x - r * 1.05)},${f(y - r * 0.2)} Q${f(x - r * 1.25)},${f(y + r * 2.2)} ${f(x - r * 0.4)},${f(y + r * 2.4)} L${f(x + r * 0.4)},${f(y + r * 2.4)} Q${f(x + r * 1.25)},${f(y + r * 2.2)} ${f(x + r * 1.05)},${f(y - r * 0.2)} Z`, c);
+  if (m.headgear === 'great-helm') return '';
   if (m.hair.style === 'bun') return shape.circle(x, y - r * 1.12, r * 0.5, c);
   if (m.hair.style === 'ponytail') return shape.path(`M${f(x + r * 0.55)},${f(y - r * 0.85)} Q${f(x + r * 1.7)},${f(y - r * 0.6)} ${f(x + r * 1.45)},${f(y + r * 1.9)} Q${f(x + r * 1.15)},${f(y + r * 0.6)} ${f(x + r * 0.7)},${f(y - r * 0.2)} Z`, c);
   if (m.hair.style === 'curly') return [-1, 1].map((s) => shape.circle(x + s * r * 0.95, y + r * 0.55, r * 0.42, c) + shape.circle(x + s * r * 0.75, y + r * 0.95, r * 0.36, c)).join('');
