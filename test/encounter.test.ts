@@ -48,16 +48,32 @@ test('initiative order: highest first; a tie goes to higher Dexterity, then PCs;
   assert.deepEqual(quick.order.slice(0, 3), ['scout', 'aria', 'goblin-1'], 'higher Dex wins the tie');
 });
 
-test('monsters roll their own initiative; players type theirs, and the fight waits for them', () => {
+test('no initiative needed: the fight starts in the order they were added, and the DM can rearrange it', () => {
+  let s = run(newEncounter('e', 'Fight', 0), [
+    { type: 'add', combatant: { name: 'Orc', count: 2 } },
+    { type: 'add', combatant: { name: 'Aria', kind: 'pc' } },
+  ]);
+  assert.deepEqual(s.order, ['orc-1', 'orc-2', 'aria']);
+  s = run(s, [{ type: 'reorder', order: ['aria', 'orc-1', 'orc-2'] }, { type: 'begin' }]);
+  assert.deepEqual([s.status, s.round, s.turn], ['running', 1, 'aria']);
+});
+
+test('initiative, when given, still sorts the order before the fight starts', () => {
   let s = run(newEncounter('e', 'Fight', 0), [
     { type: 'add', combatant: { name: 'Aria', kind: 'pc' } },
     { type: 'add', combatant: { name: 'Orc', initiativeBonus: 1, count: 2 } },
   ]);
   s = applyAction(s, { type: 'rollInitiative' }, deps([17, 3]));
-  assert.deepEqual(s.combatants.map((c) => c.initiative), [null, 18, 4]);
-  assert.throws(() => applyAction(s, { type: 'begin' }, deps()), /waiting on initiative: Aria/);
   s = run(s, [{ type: 'initiative', id: 'aria', value: 9 }, { type: 'begin' }]);
-  assert.deepEqual([s.status, s.round, s.turn], ['running', 1, 'orc-1']);
+  assert.deepEqual(s.order, ['orc-1', 'aria', 'orc-2']);
+  assert.equal(s.turn, 'orc-1');
+});
+
+test('a creature placed on the map covers its size from its stat block', () => {
+  let s = run(newEncounter('e', 'Fight', 0), [{ type: 'newMap', width: 10, height: 10 }, { type: 'add', combatant: { name: 'Hill Giant', ref: 'Hill Giant' } }]);
+  s = { ...s, statBlocks: { 'Hill Giant': { name: 'Hill Giant', source: 'srd', size: 'Huge' } } };
+  s = run(s, [{ type: 'place', id: 'hill-giant', at: [2, 2] }]);
+  assert.equal(s.map!.tokens[0]!.size, 'huge');
 });
 
 test('turns wrap into the next round; Previous steps back but never before round 1', () => {

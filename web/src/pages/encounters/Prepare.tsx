@@ -4,6 +4,7 @@ import { href } from '../../router';
 import type { EncounterOutcome, EncounterState, WikiEncounter, WikiEncounterSummary } from '../../types';
 import { Badge, Empty } from '../../ui';
 import { Dungeons } from './Dungeons';
+import { QuickBattle } from './QuickBattle';
 
 /** Before a fight: the wiki's prepared encounters, or a blank one; and how the last one ended. */
 export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | null; onStarted: (s: EncounterState) => void }) {
@@ -50,6 +51,8 @@ export function Prepare({ outcome, onStarted }: { outcome: EncounterOutcome | nu
         </div>
       )}
       {error && <div className="error-box">{error}</div>}
+
+      <QuickBattle onStarted={onStarted} />
 
       <h2>Prepared in the wiki</h2>
       {!list && !listError && <p className="muted">Loading the wiki’s encounters…</p>}

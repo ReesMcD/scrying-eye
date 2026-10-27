@@ -340,12 +340,12 @@ a.button { display: inline-flex; align-items: center; text-decoration: none; }
 .combatant.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
 .combatant.down { opacity: 0.6; }
 .combatant-row { display: flex; align-items: stretch; gap: 4px; }
-.init, .init-input { flex: none; width: 52px; text-align: center; font-weight: 700; color: var(--gold); align-self: center; }
-.init-input { margin-left: 8px; padding: 6px; min-height: 40px; }
+.init { flex: none; width: 36px; text-align: center; font-weight: 700; color: var(--gold); align-self: center; }
+.order-moves { display: flex; gap: 2px; align-items: center; flex: none; }
+.order-moves button.icon { min-width: 36px; min-height: 36px; padding: 4px; }
+.round-count { font-weight: 700; color: var(--gold); margin-right: 4px; }
 .combatant-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; text-align: left; background: none; border: 0; padding: 12px 14px 12px 6px; font-weight: 400; }
 .combatant-name { display: flex; align-items: center; gap: 8px; font-weight: 600; flex-wrap: wrap; }
-.combatant-stats { display: flex; gap: 12px; color: var(--text-2); font-size: 0.9rem; }
-.temp-hp { color: var(--accent); }
 .kind-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
 .kind-dot.pc { background: #5b8def; }
 .kind-dot.monster { background: var(--bad); }
@@ -423,3 +423,16 @@ input.narrow { width: 64px; display: inline-block; }
 .hint-ladder li { margin-bottom: 2px; }
 .room-exits { margin-top: 10px; gap: 4px 10px; }
 .end-fight { margin-bottom: 8px; }
+
+/* Quick battle (Encounters). */
+.quick-step { display: grid; gap: 6px; margin: 12px 0; }
+.quick-step .chips { margin: 0; }
+.quick-battle .chip[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.quick-monsters { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.quick-monsters li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-control); }
+.quick-monsters .mini-figure { width: 56px; display: flex; justify-content: center; flex: none; }
+.quick-monsters .mini-figure svg { max-height: 56px; width: auto; filter: none; }
+.quick-monster-name { flex: 1; min-width: 0; }
+.quick-count { display: flex; align-items: center; gap: 8px; flex: none; }
+.quick-count .tabular { min-width: 20px; text-align: center; font-weight: 700; }
+.quick-count button.icon { min-width: 40px; min-height: 40px; }

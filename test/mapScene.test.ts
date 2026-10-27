@@ -115,3 +115,9 @@ test('a dungeon plan: buried rock becomes a few big blocks, room walls stay, and
   assert.equal(parts('chest').length, 1);
   assert.equal(parts('altar').length, 2, 'the altar, and the sarcophagus in stone');
 });
+
+test('a boulder used as cover stands as a rock, not a crate', () => {
+  const scene = buildScene({ v: 1, width: 4, height: 4, terrain: [{ kind: 'cover', cover: 'half', asset: 'rock boulder', cells: [[1, 1]] }], tokens: [], notes: [] });
+  assert.equal(scene.boxes.filter((b) => b.part === 'cover').length, 0);
+  assert.equal(scene.props.filter((p) => p.kind === 'rock').length, 1);
+});

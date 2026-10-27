@@ -13,9 +13,6 @@ export interface TokenInfo {
   name: string;
   /** Whose turn it is. */
   current?: boolean;
-  /** HP bar: shown only when both are known (the DM sees all; players see the party's). */
-  hp?: number | null;
-  maxHp?: number | null;
   /** Hidden from players (the DM sees it faded). */
   hidden?: boolean;
   /** This device's own token. */
@@ -422,17 +419,6 @@ function paintToken(ctx: CanvasRenderingContext2D, t: MapToken, at: Cell, s: num
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(initials(info?.name ?? t.name), cx, cy + 0.5);
-  }
-  // HP bar.
-  if (info?.hp != null && info.maxHp) {
-    const frac = Math.max(0, Math.min(1, info.hp / info.maxHp));
-    const bw = n * s * 0.8;
-    const bx = cx - bw / 2;
-    const by = at[1] * s + n * s - Math.max(4, s * 0.12);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(bx, by, bw, Math.max(3, s * 0.09));
-    ctx.fillStyle = frac === 0 ? p.muted : frac <= 0.25 ? p.bad : frac <= 0.5 ? p.warn : p.good;
-    ctx.fillRect(bx, by, bw * frac, Math.max(3, s * 0.09));
   }
   ctx.restore();
   // Table aids, when there's room: flanked above, how far whoever's turn it is has moved below.

@@ -962,3 +962,22 @@ export interface PlayerMini {
   name: string;
   mini: MiniSpec | null;
 }
+
+// --- Quick battles ---------------------------------------------------------------------------------
+
+/** What a quick battle can start with (GET /encounters/quick). */
+export interface QuickBattleOptions {
+  maps: Array<{ id: string; name: string }>;
+  /** 2024 monsters (SRD 5.2) to pick from. */
+  monsters: Array<{ name: string; cr: string; size: string; type: string }>;
+  /** Each campaign's party, from the roster. */
+  campaigns: Array<{ id: string; name: string; party: string[] }>;
+}
+
+/** Starts a quick battle (POST /encounter { quick }). */
+export interface QuickBattleRequest {
+  map: string;
+  party: string[];
+  monsters: Array<{ name: string; count: number }>;
+  title?: string;
+}

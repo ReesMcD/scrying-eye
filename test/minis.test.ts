@@ -84,3 +84,13 @@ test('a creature with nothing to go on gets a figure varied by its name, the sam
 test('every starter figure is a valid mini', () => {
   for (const { name, mini } of STARTER_MINIS) assert.deepEqual(readMiniSpec(mini), mini, name);
 });
+
+test('the quick-battle monsters each get their own figure: goblin, guard, giant and a dragon in its colour', () => {
+  assert.equal(miniForCreature({ name: 'Goblin Warrior 2', type: 'Fey' }).ancestry, 'goblin');
+  assert.equal(miniForCreature({ name: 'Guard', type: 'Humanoid' }).headgear, 'helm');
+  assert.equal(miniForCreature({ name: 'Hill Giant', type: 'Giant' }).weapon, 'club');
+  assert.deepEqual(miniForCreature({ name: 'Adult Red Dragon', type: 'Dragon' }), { form: 'dragon', coat: 'crimson' });
+  assert.deepEqual(miniForCreature({ name: 'Young Blue Dragon' }), { form: 'dragon', coat: 'navy' });
+  assert.notEqual(miniForCreature({ name: 'Dragonborn Knight' }).form, 'dragon');
+  for (const name of ['Hill Giant', 'Adult Red Dragon']) assert.doesNotMatch(renderMini(miniForCreature({ name })).svg, /NaN|undefined/, name);
+});

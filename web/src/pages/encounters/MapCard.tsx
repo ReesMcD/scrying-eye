@@ -72,7 +72,7 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
     const walk = block?.speed?.walk;
     info[t.id] = {
       mini: miniFor(t.name, block?.type),
-      ...(c ? { name: c.name, current: c.id === state.turn, hp: c.hp, maxHp: c.maxHp, hidden: c.hidden, speed: c.speed ?? (typeof walk === 'number' ? walk : null) } : { name: t.name, hidden: !!t.hidden }),
+      ...(c ? { name: c.name, current: c.id === state.turn, hidden: c.hidden, speed: c.speed ?? (typeof walk === 'number' ? walk : null) } : { name: t.name, hidden: !!t.hidden }),
       ...(fighting ? { moved: state.moved?.[t.id]?.feet ?? 0, flanked: flanked.has(t.id) } : {}),
     };
   }
@@ -170,6 +170,7 @@ function MapBoard({ state, map, act, onSelect }: { state: EncounterState; map: B
       <MapView
         map={map}
         info={info}
+        follow={state.status === 'running'}
         fog={state.fog ? { revealed, solid: false } : null}
         overlays={area.overlays}
         {...(area.onCornerDrag ? { onCornerDrag: area.onCornerDrag } : {})}

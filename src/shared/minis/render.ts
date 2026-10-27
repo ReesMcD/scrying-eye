@@ -254,6 +254,11 @@ function weapon(m: Mini, b: Bones): { art: string; reach: number } {
       const len = H * 0.46;
       return { art: shape.rect(x - 2, y - len, 4, len + 6, wood, 1) + shape.rect(x - 9, y - len - 4, 18, 11, PALETTE.iron!, 1.5), reach: 0 };
     }
+    case 'club': {
+      // A greatclub: a knotted log, wider at the head.
+      const len = H * 0.42;
+      return { art: shape.path(`M${f(x - 2.5)},${f(y + 6)} L${f(x - 7)},${f(y - len)} Q${f(x)},${f(y - len - 9)} ${f(x + 7)},${f(y - len)} L${f(x + 2.5)},${f(y + 6)} Z`, PALETTE.brown!) + shape.detail(`M${f(x - 3)},${f(y - len * 0.6)} l4,-2 M${f(x + 1)},${f(y - len * 0.8)} l3,2`, shade(PALETTE.brown!, -0.4)), reach: 0 };
+    }
     case 'mace': {
       const len = H * 0.3;
       const spikes: string[] = [];
@@ -342,6 +347,44 @@ function beast(m: Mini): { art: string; top: number; left: number; right: number
   return { art: out.join(''), top: bodyY - 46, left: 0, right: 128 };
 }
 
+/** A dragon, side on: wings up, neck raised, tail curling behind. Scales in its coat colour. */
+function dragon(m: Mini): { art: string; top: number; left: number; right: number } {
+  const c = m.coat;
+  const dark = shade(c, -0.32);
+  const belly = shade(c, 0.4);
+  const wing = shade(c, -0.15);
+  const y = 160;
+  const horn = PALETTE.bone!;
+  const out = [
+    // Tail, then the far wing and far legs (darker, behind).
+    shape.path(`M${f(52)},${f(y - 4)} Q${f(20)},${f(y + 2)} ${f(10)},${f(y - 20)} Q${f(6)},${f(y - 34)} ${f(-6)},${f(y - 30)} L${f(2)},${f(y - 22)} Q${f(4)},${f(y - 8)} ${f(30)},${f(y + 10)} Q${f(44)},${f(y + 14)} ${f(56)},${f(y + 10)} Z`, c),
+    shape.path(`M${f(92)},${f(y - 14)} L${f(66)},${f(y - 92)} L${f(40)},${f(y - 70)} Q${f(52)},${f(y - 50)} ${f(48)},${f(y - 30)} Q${f(64)},${f(y - 36)} ${f(72)},${f(y - 20)} Z`, dark),
+    shape.rect(56, y + 4, 11, 34, dark, 4),
+    shape.rect(98, y + 4, 11, 34, dark, 4),
+    // Body, belly, near legs with claws.
+    shape.ellipse(82, y, 40, 19, c),
+    shape.path(`M${f(52)},${f(y + 8)} Q${f(82)},${f(y + 24)} ${f(114)},${f(y + 6)} Q${f(84)},${f(y + 14)} ${f(52)},${f(y + 8)} Z`, belly),
+    shape.rect(64, y + 6, 13, 34, c, 4),
+    shape.rect(106, y + 4, 13, 35, c, 4),
+    shape.poly([[62, y + 40], [66, y + 34], [70, y + 40]], horn),
+    shape.poly([[104, y + 40], [108, y + 34], [112, y + 40]], horn),
+    // Neck rising to the head.
+    shape.path(`M${f(104)},${f(y - 14)} Q${f(128)},${f(y - 30)} ${f(128)},${f(y - 62)} L${f(144)},${f(y - 60)} Q${f(142)},${f(y - 20)} ${f(118)},${f(y + 2)} Z`, c),
+    shape.path(`M${f(120)},${f(y - 6)} Q${f(136)},${f(y - 26)} ${f(136)},${f(y - 58)}`, 'none'),
+    // Head: skull, snout, jaw, horns, eye.
+    shape.poly([[130, y - 74], [124, y - 92], [138, y - 78]], horn),
+    shape.poly([[138, y - 76], [140, y - 96], [146, y - 76]], horn),
+    shape.path(`M${f(124)},${f(y - 66)} Q${f(130)},${f(y - 82)} ${f(148)},${f(y - 78)} L${f(172)},${f(y - 70)} Q${f(176)},${f(y - 64)} ${f(170)},${f(y - 60)} L${f(144)},${f(y - 56)} Q${f(128)},${f(y - 54)} ${f(124)},${f(y - 66)} Z`, c),
+    shape.path(`M${f(146)},${f(y - 58)} L${f(168)},${f(y - 58)} Q${f(162)},${f(y - 50)} ${f(146)},${f(y - 52)} Z`, belly),
+    shape.circle(144, y - 70, 2.6, '#f6d04d'),
+    shape.circle(168, y - 67, 1.4, INK),
+    // Near wing, raised: bones and a scalloped edge.
+    shape.path(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} L${f(124)},${f(y - 112)} Q${f(122)},${f(y - 92)} ${f(112)},${f(y - 84)} Q${f(110)},${f(y - 64)} ${f(98)},${f(y - 58)} Q${f(100)},${f(y - 38)} ${f(98)},${f(y - 14)} Z`, wing),
+    shape.detail(`M${f(98)},${f(y - 14)} L${f(78)},${f(y - 104)} M${f(86)},${f(y - 70)} L${f(124)},${f(y - 112)} M${f(90)},${f(y - 52)} L${f(112)},${f(y - 84)}`, dark, 2),
+  ];
+  return { art: out.join(''), top: y - 114, left: -10, right: 180 };
+}
+
 /** Draws a mini as an SVG card. */
 export function renderMini(spec: MiniSpec, options: RenderOptions = {}): RenderedMini {
   const m = resolveMini(spec);
@@ -351,8 +394,8 @@ export function renderMini(spec: MiniSpec, options: RenderOptions = {}): Rendere
   let top: number;
   let left = 0;
   let right = 120;
-  if (m.form === 'beast') {
-    const b = beast(m);
+  if (m.form === 'beast' || m.form === 'dragon') {
+    const b = m.form === 'dragon' ? dragon(m) : beast(m);
     art = b.art;
     top = b.top;
     left = b.left;

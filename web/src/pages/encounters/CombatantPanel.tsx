@@ -6,38 +6,20 @@ const CONDITIONS: ConditionName[] = ['Blinded', 'Charmed', 'Deafened', 'Exhausti
 
 type Act = (action: EncounterAction) => Promise<void>;
 
-/** Everything the DM does to one combatant: HP, conditions, concentration, hiding, editing, the stat block. */
+/**
+ * What the DM does to one piece: conditions as reminders, hiding, renaming, removing, and its stat
+ * block to read. HP and AC aren't tracked here: the DM keeps those however they like.
+ */
 export function CombatantPanel({ c, state, act }: { c: Combatant; state: EncounterState; act: Act }) {
-  const [amount, setAmount] = useState('');
   const [condition, setCondition] = useState<ConditionName>('Prone');
   const [rounds, setRounds] = useState('');
   const [tickOn, setTickOn] = useState<'start' | 'end'>('end');
   const [tickOf, setTickOf] = useState(c.id);
-  const [spell, setSpell] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const n = Number(amount);
-  const valid = amount.trim() !== '' && Number.isInteger(n) && n >= 0;
-  const hpAction = (type: 'damage' | 'heal' | 'tempHp') => void act({ type, id: c.id, amount: n }).then(() => setAmount(''));
   const block = c.ref ? state.statBlocks[c.ref] : undefined;
 
   return (
     <div className="combatant-panel">
-      <div className="row hp-controls">
-        <label htmlFor={`amt-${c.id}`} className="visually-hidden">
-          Amount
-        </label>
-        <input id={`amt-${c.id}`} className="amount" inputMode="numeric" value={amount} placeholder="Amount" onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} />
-        <button className="danger" disabled={!valid} onClick={() => hpAction('damage')}>
-          Damage
-        </button>
-        <button disabled={!valid || c.hp === null} onClick={() => hpAction('heal')}>
-          Heal
-        </button>
-        <button disabled={!valid} onClick={() => hpAction('tempHp')}>
-          Temp HP
-        </button>
-      </div>
-
       <div className="row condition-add">
         <label className="visually-hidden" htmlFor={`cond-${c.id}`}>
           Condition
@@ -85,22 +67,6 @@ export function CombatantPanel({ c, state, act }: { c: Combatant; state: Encount
           ))}
         </div>
       )}
-
-      <div className="row">
-        {c.concentrating ? (
-          <button onClick={() => void act({ type: 'concentrate', id: c.id, spell: null })}>Stop concentrating on {c.concentrating}</button>
-        ) : (
-          <>
-            <label className="visually-hidden" htmlFor={`spell-${c.id}`}>
-              Spell
-            </label>
-            <input id={`spell-${c.id}`} style={{ flex: 1, minWidth: 140 }} value={spell} placeholder="Concentrating on… (Bless)" onChange={(e) => setSpell(e.target.value)} />
-            <button disabled={!spell.trim()} onClick={() => void act({ type: 'concentrate', id: c.id, spell }).then(() => setSpell(''))}>
-              Concentrate
-            </button>
-          </>
-        )}
-      </div>
 
       <div className="row">
         <button onClick={() => void act({ type: 'reveal', id: c.id, hidden: !c.hidden })}>{c.hidden ? 'Reveal to players' : 'Hide from players'}</button>
@@ -157,37 +123,22 @@ export function CombatantPanel({ c, state, act }: { c: Combatant; state: Encount
   );
 }
 
+/** Renames a piece ("Goblin Warrior 2" → "Snik"). */
 function EditCombatant({ c, act }: { c: Combatant; act: Act }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(c.name);
-  const [ac, setAc] = useState(c.ac === null ? '' : String(c.ac));
-  const [maxHp, setMaxHp] = useState(c.maxHp === null ? '' : String(c.maxHp));
-  const [hp, setHp] = useState(c.hp === null ? '' : String(c.hp));
-  const num = (v: string) => (v.trim() === '' ? null : Number(v));
-  if (!open) return <button onClick={() => setOpen(true)}>Edit</button>;
+  if (!open) return <button onClick={() => setOpen(true)}>Rename</button>;
   return (
     <form
       className="edit-combatant"
       onSubmit={(e) => {
         e.preventDefault();
-        void act({ type: 'update', id: c.id, name, ac: num(ac), maxHp: num(maxHp), hp: num(hp) }).then(() => setOpen(false));
+        void act({ type: 'update', id: c.id, name }).then(() => setOpen(false));
       }}
     >
       <label>
         <span className="field-label">Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label>
-        <span className="field-label">AC</span>
-        <input inputMode="numeric" value={ac} onChange={(e) => setAc(e.target.value.replace(/\D/g, ''))} />
-      </label>
-      <label>
-        <span className="field-label">HP</span>
-        <input inputMode="numeric" value={hp} onChange={(e) => setHp(e.target.value.replace(/\D/g, ''))} />
-      </label>
-      <label>
-        <span className="field-label">Max HP</span>
-        <input inputMode="numeric" value={maxHp} onChange={(e) => setMaxHp(e.target.value.replace(/\D/g, ''))} />
       </label>
       <button className="primary">Save</button>
       <button type="button" onClick={() => setOpen(false)}>

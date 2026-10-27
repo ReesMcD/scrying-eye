@@ -207,6 +207,11 @@ export function buildScene(map: BattleMap): MapScene {
       case 'cover': {
         // Half cover: about waist high; three-quarters: about chest high.
         const h = feet(t.height, t.cover === 'three-quarters' ? 1 : 0.6);
+        // Boulders are rocks to hide behind, not boxes.
+        if (propKind(t) === 'rock') {
+          for (const [x, y] of cells) props.push({ kind: 'rock', x: x + 0.5, z: y + 0.5, y: level(x, y), h, seed: seedOf(x, y) });
+          break;
+        }
         // Barrels and crates are wood; sarcophagi, tombs and low walls are stone.
         const part = /\b(sarcophag\w*|coffins?|tombs?|stone|statue|wall|altar)\b/i.test(`${t.asset ?? ''} ${t.label ?? ''}`) ? 'altar' : 'cover';
         for (const [x, y] of cells) boxes.push({ part, x: x + 0.12, z: y + 0.12, w: 0.76, d: 0.76, y: level(x, y), h });
