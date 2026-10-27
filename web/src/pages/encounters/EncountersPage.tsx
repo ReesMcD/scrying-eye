@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { api, subscribe } from '../../api';
 import type { ConfigState, EncounterAction, EncounterOutcome, EncounterState } from '../../types';
 import { Prepare } from './Prepare';
-import { Tracker } from './Tracker';
+import { LiveEncounter } from './LiveEncounter';
 
-/** Run a fight: pick one prepared in the wiki (or start blank), then the tracker. Live on every open view. */
+/** Run a fight: set one up (quick, from the wiki, or blank), then the live encounter page. Live on every open view. */
 export function EncountersPage() {
   const [state, setState] = useState<EncounterState | null | undefined>(undefined);
   const [outcome, setOutcome] = useState<EncounterOutcome | null>(null);
@@ -38,14 +38,14 @@ export function EncountersPage() {
 
   if (state === undefined) return error ? <div className="error-box">{error}</div> : <p className="muted">Loading…</p>;
   return (
-    <div className="encounters">
+    <div className={state ? 'live-page' : 'encounters'}>
       {error && (
-        <div className="error-box" role="alert">
+        <div className="error-box live-error" role="alert">
           {error}
         </div>
       )}
       {state ? (
-        <Tracker state={state} act={act} onEnd={end} assistant={assistant} />
+        <LiveEncounter state={state} act={act} onEnd={end} assistant={assistant} />
       ) : (
         <Prepare
           outcome={outcome}

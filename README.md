@@ -472,6 +472,13 @@ What's in it:
     monsters from the 2024 rules (Goblin Warrior, Guard, Hill Giant, Adult Red Dragon), and
     **Set up the board** places everyone. **Add to the board** takes any other 2024 monster by
     name, with its stat block.
+  - **The live encounter page:** once the board is set up, Encounters becomes the map, filling the
+    page (the screen you share on Discord), with the sidebar kept for Music and the rest. The turn
+    order runs down the left, **Previous / Round / Next turn** along the bottom, and **Map tools**,
+    **Details** (players' link, the turn order to arrange, conditions, stat blocks, adding pieces,
+    dice, notes) and **End** at the top. **Hide controls** leaves just the map, the turn order and
+    Next for sharing. Keys: **N** or → next turn, **P** or ← previous, **H** hide or show controls.
+    Name tags that would overlap take turns: whose turn it is first, then the party.
   - **The tracker is for moving pieces:** no initiative, HP or AC (players keep theirs on their
     sheets; you run monsters however you like). Arrange the turn order with the arrows, **Start
     round 1**, then **Next turn**; the round counts up as it loops, and the 3D map moves to whoever's
