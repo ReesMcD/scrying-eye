@@ -130,7 +130,7 @@ function quadruped(m: Mini, p: Plan): Drawn {
     out.push(flames(pts, 16));
     top = Math.min(top, hy - s * 0.4 - 16);
   }
-  return { art: out.join(''), top, left, right };
+  return { art: out.join(''), top, left, right, face: { x: hx + s * 0.35, y: hy + s * 0.1, r: s * 1.6 } };
 }
 
 function leg(x: number, cy: number, p: Plan, colour: string, far: boolean): string {

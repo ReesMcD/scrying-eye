@@ -17,6 +17,8 @@ export interface RenderedMini {
   /** The view box's size, in card units: the card's aspect, and its height relative to others. */
   width: number;
   height: number;
+  /** Where the face is, in the SVG's own coordinates: a circle round the head (for portrait tokens). */
+  face: { x: number; y: number; r: number };
 }
 
 export interface RenderOptions {
@@ -42,6 +44,17 @@ export interface MiniArtStyle {
 export const ART_STYLES = { paper: paperStyle } as const satisfies Record<string, MiniArtStyle>;
 export type ArtStyleId = keyof typeof ART_STYLES;
 export const DEFAULT_ART_STYLE: ArtStyleId = 'paper';
+
+/**
+ * The mini's face for a round token: the same drawing, framed on its head, with no card. The SVG
+ * is square; draw it clipped to a circle.
+ */
+export function renderPortrait(spec: MiniSpec, options: Omit<RenderOptions, 'paper'> = {}): string {
+  const { svg, face } = renderMini(spec, { ...options, paper: false });
+  const f = (n: number) => String(Math.round(n * 10) / 10);
+  const box = `${f(face.x - face.r)} ${f(face.y - face.r)} ${f(face.r * 2)} ${f(face.r * 2)}`;
+  return svg.replace(/viewBox="[^"]*"/, `viewBox="${box}"`).replace(/ width="[^"]+" height="[^"]+"/, ' width="128" height="128"');
+}
 
 /** Draws a mini as an SVG card in an art style. */
 export function renderMini(spec: MiniSpec, options: RenderOptions = {}): RenderedMini {
