@@ -18,7 +18,7 @@ README.md, **live-testing steps in TESTING.md**.
 - Battle map: format and rules in `src/shared/battlemap.ts`, sight/fog/areas in `src/shared/mapSight.ts`, the 3D scene model in `src/shared/mapScene.ts` (tested without a GPU). Views: `web/src/map/BattleMapView.tsx` (2D canvas), `Map3D.tsx` + `mapEngine3d.ts` (three.js, lazy-loaded), both painting the floor with `paint.ts`; `MapView.tsx` switches between them.
 - Paper minis: format and SVG renderer in `src/shared/minis/` (look: `docs/minis-style-guide.md`), stored by `src/minis/store.ts` (`data/minis.json`), DM routes `src/app/miniRoutes.ts`, players' links on the player server. UI: `web/src/minis/MiniBuilder.tsx`, the **Minis** page, and `web/src/mini/` (a player's link page). 3D standees draw them (`web/src/map/standee.ts`).
 - Recap pipeline: `src/summary/summarizeSession.ts` (disambiguate → `cleanup.ts` + `cleanupAudit.ts` → extract → synthesize → `recapAudit.ts`, kill count in `recap.ts`, hand edits in `recapEdits.ts`). The format lives in `prompts/*.md`; bump `PROMPT_VERSIONS` in `src/summary/prompts.ts` when one changes meaningfully. Tests use `test/helpers/fakeModel.ts`.
-- The recorder used by the app is `src/recording/SessionRecorder.ts` (driven by `src/bot/BotService.ts`); `src/spike/receive.ts` (`spike:receive`) is a thin CLI around the same recorder that adds the M0 report.
+- The bot in a voice channel is `src/recording/VoiceLink.ts` (joins, reconnects, plays music); the recorder used by the app is `src/recording/SessionRecorder.ts`, which records on a link (both driven by `src/bot/BotService.ts`); `src/spike/receive.ts` (`spike:receive`) is a thin CLI around the same recorder that adds the M0 report.
 
 ## Rules
 

@@ -9,10 +9,11 @@ import { encounterChoices, runEncounterCommand, type EncounterCommandDeps, type 
 import { loadConfig } from '../config/load.js';
 import { listUtterances, paths, readJson, skipDamaged, writeJson, type SessionInfo } from '../session/layout.js';
 import { SessionRecorder } from '../recording/SessionRecorder.js';
+import { VoiceLink } from '../recording/VoiceLink.js';
 import { MusicBroadcast } from '../music/broadcast.js';
 import type { ConfigStore } from '../app/configStore.js';
 import type { JobRunner } from '../app/jobs.js';
-import type { BotControl, BotStatus, GuildInfo, LiveSnapshot, LiveUpdate, RecordingStatus } from './types.js';
+import type { BotControl, BotStatus, GuildInfo, LiveSnapshot, LiveUpdate, RecordingStatus, VoiceStatus } from './types.js';
 import type { LiveTranscript, PollsState, TranscriptLine } from '../shared/types.js';
 import type { PollPoster } from '../polls/PollService.js';
 import { LiveTranscriber } from '../transcription/live.js';
@@ -58,15 +59,17 @@ export function recoverInterrupted(dataDir: string): string[] {
 }
 
 /**
- * The always-on Discord bot: stays logged in, lists voice channels, and runs one recording at a
- * time. Status changes are emitted as "status" events for the API, web UI and menu bar.
+ * The always-on Discord bot: stays logged in, lists voice channels, sits in one of them (for
+ * music, recording or both) and runs one recording at a time. Status changes are emitted as
+ * "status" events for the API, web UI and menu bar.
  */
 export class BotService extends EventEmitter implements BotControl {
-  /** Music mixed by the Mac app, played into whichever channel the bot is recording. */
+  /** Music mixed by the Mac app, played into whichever channel the bot is in. */
   readonly music = new MusicBroadcast();
   private client: Client | undefined;
   private state: BotStatus['state'] = 'off';
   private error: string | undefined;
+  private voice: VoiceLink | undefined;
   private recorder: SessionRecorder | undefined;
   private jobs: JobRunner | undefined;
   private configStore: ConfigStore | undefined;
@@ -108,6 +111,7 @@ export class BotService extends EventEmitter implements BotControl {
       state: this.state,
       ...(this.client?.user ? { user: this.client.user.tag } : {}),
       ...(this.error ? { error: this.error } : {}),
+      voice: this.voice?.status() ?? null,
       recording: this.recorder ? { ...this.recorder.status(), ...(this.live ? { live: true } : {}) } : null,
       ...this.inviteStatus(),
     };
@@ -391,8 +395,52 @@ export class BotService extends EventEmitter implements BotControl {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async join(channelId: string, opts: { campaign?: string } = {}): Promise<RecordingStatus> {
+  /** Joins a voice channel without recording (to play music); moves there from another channel unless recording. */
+  async connect(channelId: string): Promise<VoiceStatus> {
+    return (await this.linkTo(channelId)).status();
+  }
+
+  /** Leaves the voice channel; refused while recording. */
+  leave(): void {
+    if (this.recorder) throw new Error('Stop recording first');
+    if (!this.voice) throw new Error('Not in a voice channel');
+    this.closeLink();
+  }
+
+  /** Starts recording a channel, joining it first if the bot isn't there yet. */
+  async record(channelId: string, opts: { campaign?: string } = {}): Promise<RecordingStatus> {
+    if (this.recorder) throw new Error(`Already recording #${this.recorder.status().channelName}; stop that first`);
+    const { config } = loadConfig(this.opts.configPath);
+    if (opts.campaign && !config.campaigns[opts.campaign]) throw new Error('No such campaign');
+    const link = await this.linkTo(channelId);
+    const { channel } = link;
+    const campaign = opts.campaign ?? campaignForChannel(config, channelId);
+    const sessionsRoot = join(this.opts.dataDir, 'sessions');
+    const sessionId = sessionIdFor(Date.now(), channel.name, config.transcript.timezone, (id) => existsSync(join(sessionsRoot, id)));
+    const recorder = new SessionRecorder({
+      sessionId,
+      sessionDir: join(sessionsRoot, sessionId),
+      link,
+      filter: { ignoreUserIds: new Set(config.recording.ignore_users), ignoreBots: config.recording.ignore_bots, selfId: this.client!.user!.id },
+      silenceMs: config.recording.silence_ms,
+      ...(campaign ? { campaign } : {}),
+      log: this.log,
+    });
+    this.recorder = recorder;
+    recorder.on('update', () => this.emitStatus());
+    recorder.start();
+    if (config.transcription.live) this.startLive(sessionId, join(sessionsRoot, sessionId), config, recorder);
+    if (config.recording.announce) {
+      await channel.send('🔴 **Recording started.** This call is being recorded and transcribed.').catch(() => this.log('could not post the start notice (needs Send Messages)'));
+    }
+    this.emitStatus(true);
+    return recorder.status();
+  }
+
+  /** The bot in this channel: already there, moved there, or newly joined. */
+  private async linkTo(channelId: string): Promise<VoiceLink> {
     if (!this.client || this.state !== 'ready') throw new Error('The bot is not connected to Discord');
+    if (this.voice?.channel.id === channelId) return this.voice;
     if (this.recorder) throw new Error(`Already recording #${this.recorder.status().channelName}; stop that first`);
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel?.isVoiceBased()) throw new Error('That voice channel is not visible to the bot');
@@ -400,40 +448,28 @@ export class BotService extends EventEmitter implements BotControl {
     const allowed = channel.guild.members.me ? channel.permissionsFor(channel.guild.members.me) : null;
     if (allowed && !allowed.has(PermissionFlagsBits.Connect)) throw new Error(`The bot isn't allowed to connect to #${channel.name}: give its role Connect there (channel settings → Permissions)`);
     if (allowed && !allowed.has(PermissionFlagsBits.Speak)) this.log(`#${channel.name}: the bot can't speak there, so music won't be heard (recording works)`);
-
-    const { config } = loadConfig(this.opts.configPath);
-    if (opts.campaign && !config.campaigns[opts.campaign]) throw new Error('No such campaign');
-    const campaign = opts.campaign ?? campaignForChannel(config, channelId);
-    const sessionsRoot = join(this.opts.dataDir, 'sessions');
-    const sessionId = sessionIdFor(Date.now(), channel.name, config.transcript.timezone, (id) => existsSync(join(sessionsRoot, id)));
-    const recorder = new SessionRecorder({
-      sessionId,
-      sessionDir: join(sessionsRoot, sessionId),
-      guild: channel.guild,
-      channel,
-      filter: { ignoreUserIds: new Set(config.recording.ignore_users), ignoreBots: config.recording.ignore_bots, selfId: this.client.user!.id },
-      silenceMs: config.recording.silence_ms,
-      ...(campaign ? { campaign } : {}),
-      selfMute: false,
-      log: this.log,
-    });
-    this.recorder = recorder;
-    recorder.on('update', () => this.emitStatus());
-    recorder.on('lost', () => void this.stop().catch(() => {}));
-    try {
-      await recorder.start();
-    } catch (err) {
-      this.recorder = undefined;
-      this.emitStatus(true);
-      throw err;
-    }
-    recorder.play(this.music.player);
-    if (config.transcription.live) this.startLive(sessionId, join(sessionsRoot, sessionId), config, recorder);
-    if (config.recording.announce) {
-      await channel.send('🔴 **Recording started.** This call is being recorded and transcribed.').catch(() => this.log('could not post the start notice (needs Send Messages)'));
-    }
+    this.closeLink();
+    const link = await VoiceLink.open({ guild: channel.guild, channel, selfMute: false, log: this.log });
+    this.voice = link;
+    link.play(this.music.player);
+    link.on('state', () => this.emitStatus(true));
+    link.on('lost', () => void this.lost(link));
     this.emitStatus(true);
-    return recorder.status();
+    return link;
+  }
+
+  /** Gave up reconnecting: save the recording, if any, and forget the channel. */
+  private async lost(link: VoiceLink): Promise<void> {
+    if (this.voice !== link) return;
+    if (this.recorder) await this.stop().catch(() => {});
+    this.closeLink();
+  }
+
+  private closeLink(): void {
+    if (!this.voice) return;
+    this.voice.close();
+    this.voice = undefined;
+    this.emitStatus(true);
   }
 
   async stop(): Promise<{ sessionId: string }> {
@@ -457,6 +493,7 @@ export class BotService extends EventEmitter implements BotControl {
 
   async shutdown(): Promise<void> {
     if (this.recorder) await this.stop().catch(() => {});
+    this.closeLink();
     await this.client?.destroy();
     this.client = undefined;
     this.setState('off');

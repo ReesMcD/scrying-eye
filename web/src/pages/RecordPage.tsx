@@ -3,7 +3,7 @@ import { api, subscribe } from '../api';
 import { hms, speakerHue } from '../format';
 import { href } from '../router';
 import { campaignFor, campaignForChannel, charactersByAccount } from '../../../src/config/roster';
-import type { BotStatus, Config, ConfigState, GuildInfo, RecordingStatus, SessionSummary } from '../types';
+import type { BotStatus, Config, ConfigState, GuildInfo, RecordingStatus, SessionSummary, VoiceStatus } from '../types';
 import { Empty } from '../ui';
 import { LiveTranscript } from './LiveTranscript';
 
@@ -37,19 +37,23 @@ export function RecordPage() {
     });
   }, []);
 
-  const join = async (channelId: string) => {
-    setBusy(channelId);
+  /** One bot action; `busy` names the button that's waiting. */
+  const run = async (key: string, action: () => Promise<unknown>) => {
+    setBusy(key);
     setError('');
     try {
-      await api<RecordingStatus>('/bot/join', { method: 'POST', json: { channelId, ...(campaign ? { campaign } : {}) } });
+      await action();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy('');
     }
   };
+  const record = (channelId: string) => run(`record:${channelId}`, () => api<RecordingStatus>('/bot/record', { method: 'POST', json: { channelId, ...(campaign ? { campaign } : {}) } }));
+  const join = (channelId: string) => run(`join:${channelId}`, () => api<VoiceStatus>('/bot/join', { method: 'POST', json: { channelId } }));
+  const leave = () => run('leave', () => api('/bot/leave', { method: 'POST' }));
   const stop = async () => {
-    if (!window.confirm('Stop recording?')) return;
+    if (!window.confirm('Stop recording? The bot stays in the channel (for music) until you leave.')) return;
     setBusy('stop');
     try {
       const { sessionId } = await api<{ sessionId: string }>('/bot/stop', { method: 'POST' });
@@ -77,6 +81,7 @@ export function RecordPage() {
       )}
       {rec ? <Recording rec={rec} config={config} onStop={stop} stopping={busy === 'stop'} /> : status.state === 'ready' && (
         <>
+          {status.voice && <InChannel voice={status.voice} onLeave={leave} leaving={busy === 'leave'} />}
           {config && Object.keys(config.campaigns).length > 0 && (
             <label className="field">
               <span className="field-label">Campaign</span>
@@ -116,9 +121,16 @@ export function RecordPage() {
                         <div className="muted small">Campaign: {config.campaigns[campaign || campaignForChannel(config, c.id)!]?.name}</div>
                       )}
                     </div>
-                    <button className={c.members.length ? 'primary' : ''} disabled={!!busy} onClick={() => join(c.id)}>
-                      {busy === c.id ? 'Joining…' : 'Join & record'}
-                    </button>
+                    <div className="row">
+                      {status.voice?.channelId !== c.id && (
+                        <button disabled={!!busy} onClick={() => join(c.id)} title="Join without recording, to play music">
+                          {busy === `join:${c.id}` ? 'Joining…' : 'Join'}
+                        </button>
+                      )}
+                      <button className={c.members.length ? 'primary' : ''} disabled={!!busy} onClick={() => record(c.id)}>
+                        {busy === `record:${c.id}` ? 'Starting…' : 'Record'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -129,6 +141,26 @@ export function RecordPage() {
 }
 
 const EMPTY = { speakers: {}, campaigns: {}, characters: {} };
+
+/** The bot is in a channel without recording it (playing music). */
+function InChannel({ voice, onLeave, leaving }: { voice: VoiceStatus; onLeave: () => void; leaving: boolean }) {
+  const state = voice.state === 'connected' ? 'not recording; music plays here' : voice.state === 'reconnecting' ? 'reconnecting…' : 'connecting…';
+  return (
+    <div className="card row spread">
+      <div>
+        <strong className="row" style={{ gap: 6 }}>
+          <SpeakerIcon /> In #{voice.channelName}
+        </strong>
+        <div className="muted small">
+          {voice.guildName} · {state}
+        </div>
+      </div>
+      <button disabled={leaving} onClick={onLeave}>
+        {leaving ? 'Leaving…' : 'Leave'}
+      </button>
+    </div>
+  );
+}
 
 /** "Sam as Thorin", "Rees", or the Discord name with a note when no speaker is linked to the account. */
 function whoIs(config: Config | null, campaignId: string | undefined, m: { id: string; name: string; bot: boolean }): string {

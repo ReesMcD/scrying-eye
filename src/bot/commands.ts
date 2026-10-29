@@ -89,7 +89,7 @@ function describe(rec: RecordingStatus, now: number): string {
 }
 
 /** Runs a slash command against the bot; the answer is shown only to whoever ran it. */
-export async function runCommand(req: CommandRequest, bot: Pick<BotControl, 'status' | 'join' | 'stop'>): Promise<string> {
+export async function runCommand(req: CommandRequest, bot: Pick<BotControl, 'status' | 'record' | 'stop'>): Promise<string> {
   const now = req.now ?? Date.now();
   const recording = bot.status().recording;
   const elsewhere = recording && recording.guildId !== req.guildId;
@@ -104,7 +104,7 @@ export async function runCommand(req: CommandRequest, bot: Pick<BotControl, 'sta
       const channelId = req.channelId ?? req.memberVoiceChannelId;
       if (!channelId) return 'Join a voice channel first, or pick one: `/record channel:`';
       try {
-        const started = await bot.join(channelId, req.campaign ? { campaign: req.campaign } : {});
+        const started = await bot.record(channelId, req.campaign ? { campaign: req.campaign } : {});
         return `🔴 Recording **#${started.channelName}**. Use /stop when you're done.`;
       } catch (err) {
         return `Couldn't start: ${(err as Error).message}`;

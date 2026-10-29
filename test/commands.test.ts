@@ -32,9 +32,9 @@ class FakeBot {
   stops = 0;
   failJoin: string | undefined;
   status(): BotStatus {
-    return { state: 'ready', recording: this.rec };
+    return { state: 'ready', voice: null, recording: this.rec };
   }
-  async join(channelId: string): Promise<RecordingStatus> {
+  async record(channelId: string): Promise<RecordingStatus> {
     if (this.failJoin) throw new Error(this.failJoin);
     this.joined.push(channelId);
     this.rec = recording({ channelId, channelName: channelId === 'vc2' ? 'one-shot' : 'game-night' });

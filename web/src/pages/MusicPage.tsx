@@ -60,7 +60,7 @@ export function MusicPage() {
       <p className="muted small" style={{ marginTop: 0 }}>
         {status.inChannel
           ? 'Playing into the voice channel. Players hear every tab below, mixed.'
-          : 'The bot plays music while it’s in a voice channel: start a recording to be heard.'}
+          : 'The bot plays music while it’s in a voice channel: join one (or start a recording) on the Record page.'}
       </p>
       {error && <div className="error-box">{error}</div>}
 

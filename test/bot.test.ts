@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BotService, recoverInterrupted, sessionIdFor } from '../src/bot/BotService.js';
-import type { BotControl, BotStatus, GuildInfo, RecordingStatus } from '../src/bot/types.js';
+import type { BotControl, BotStatus, GuildInfo, RecordingStatus, VoiceStatus } from '../src/bot/types.js';
 import { createApi } from '../src/app/api.js';
 import { ConfigStore } from '../src/app/configStore.js';
 import { JobRunner, type Job } from '../src/app/jobs.js';
@@ -68,8 +68,9 @@ test('recovered recordings are queued for processing according to after_stop', a
   bot.attachJobs(jobs, new ConfigStore(configPath));
   await jobs.idle();
   assert.deepEqual(steps, ['transcribe:crashed', 'summarize:crashed']);
-  assert.deepEqual(bot.status(), { state: 'off', recording: null });
-  await assert.rejects(bot.join('123456789012345678'), /not connected/);
+  assert.deepEqual(bot.status(), { state: 'off', voice: null, recording: null });
+  await assert.rejects(bot.record('123456789012345678'), /not connected/);
+  await assert.rejects(bot.connect('123456789012345678'), /not connected/);
 });
 
 test('with upload.auto on, the recap is uploaded after it is written; off by default', async () => {
@@ -110,15 +111,25 @@ test('when transcription fails, the queued recap is skipped with the reason inst
 });
 
 class FakeBot extends EventEmitter implements BotControl {
+  voice: VoiceStatus | null = null;
   recording: RecordingStatus | null = null;
   status(): BotStatus {
-    return { state: 'ready', user: 'SessionBot#0001', recording: this.recording };
+    return { state: 'ready', user: 'SessionBot#0001', voice: this.voice, recording: this.recording };
+  }
+  async connect(channelId: string) {
+    this.voice = { guildId: '1', guildName: 'The Table', channelId, channelName: 'game-night', since: 1, state: 'connected' };
+    return this.voice;
+  }
+  leave() {
+    if (this.recording) throw new Error('Stop recording first');
+    this.voice = null;
   }
   guilds(): GuildInfo[] {
     return [{ id: '1', name: 'The Table', channels: [{ id: '222222222222222222', name: 'game-night', members: [{ id: '3', name: 'Rees', bot: false }] }] }];
   }
-  async join(channelId: string) {
+  async record(channelId: string) {
     if (this.recording) throw new Error('Already recording');
+    await this.connect(channelId);
     this.recording = {
       sessionId: 's1',
       guildId: '1',
@@ -141,7 +152,7 @@ class FakeBot extends EventEmitter implements BotControl {
   }
 }
 
-test('API: bot status, channels, join and stop', async () => {
+test('API: bot status, channels, record and stop', async () => {
   const root = mkdtempSync(join(tmpdir(), 'api-'));
   const bot = new FakeBot();
   const api = createApi({
@@ -156,22 +167,38 @@ test('API: bot status, channels, join and stop', async () => {
 
   assert.equal(((await (await req('/bot')).json()) as BotStatus).state, 'ready');
   assert.equal(((await (await req('/bot/guilds')).json()) as GuildInfo[])[0]!.channels[0]!.name, 'game-night');
-  assert.equal((await req('/bot/join', { method: 'POST', body: JSON.stringify({ channelId: 'nope' }) })).status, 400);
-  const joined = await req('/bot/join', { method: 'POST', body: JSON.stringify({ channelId: '222222222222222222' }) });
-  assert.equal(joined.status, 200);
-  assert.equal(((await joined.json()) as RecordingStatus).channelName, 'game-night');
-  const again = await req('/bot/join', { method: 'POST', body: JSON.stringify({ channelId: '222222222222222222' }) });
+  assert.equal((await req('/bot/record', { method: 'POST', body: JSON.stringify({ channelId: 'nope' }) })).status, 400);
+  const started = await req('/bot/record', { method: 'POST', body: JSON.stringify({ channelId: '222222222222222222' }) });
+  assert.equal(started.status, 200);
+  assert.equal(((await started.json()) as RecordingStatus).channelName, 'game-night');
+  const again = await req('/bot/record', { method: 'POST', body: JSON.stringify({ channelId: '222222222222222222' }) });
   assert.equal(again.status, 409);
   assert.match(((await again.json()) as { error: string }).error, /Already recording/);
+  assert.match(((await (await req('/bot/leave', { method: 'POST' })).json()) as { error: string }).error, /Stop recording first/);
   assert.deepEqual(await (await req('/bot/stop', { method: 'POST' })).json(), { sessionId: 's1' });
   assert.equal((await req('/bot/stop', { method: 'POST' })).status, 409);
+});
+
+test('API: the bot joins a channel without recording, and leaves it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'api-'));
+  const bot = new FakeBot();
+  const api = createApi({ password: 'pw-12345678', dataDir: join(root, 'data'), configStore: new ConfigStore(join(root, 'config.yaml')), jobs: new JobRunner(async () => {}), bot });
+  const req = (path: string, init: RequestInit = {}) => api.request(path, { ...init, headers: { Authorization: 'Bearer pw-12345678', 'Content-Type': 'application/json' } });
+
+  assert.equal((await req('/bot/join', { method: 'POST', body: JSON.stringify({ channelId: 'nope' }) })).status, 400);
+  assert.equal(((await (await req('/bot/join', { method: 'POST', body: JSON.stringify({ channelId: '222222222222222222' }) })).json()) as VoiceStatus).channelName, 'game-night');
+  const status = (await (await req('/bot')).json()) as BotStatus;
+  assert.equal(status.voice?.channelId, '222222222222222222');
+  assert.equal(status.recording, null, 'joining does not record');
+  assert.equal((await req('/bot/leave', { method: 'POST' })).status, 200);
+  assert.equal(((await (await req('/bot')).json()) as BotStatus).voice, null);
 });
 
 test('API without a bot reports it as off', async () => {
   const root = mkdtempSync(join(tmpdir(), 'api-'));
   const api = createApi({ password: 'pw-12345678', dataDir: root, configStore: new ConfigStore(join(root, 'c.yaml')), jobs: new JobRunner(async () => {}) });
   const res = await api.request('/bot', { headers: { Authorization: 'Bearer pw-12345678' } });
-  assert.deepEqual(await res.json(), { state: 'off', recording: null });
+  assert.deepEqual(await res.json(), { state: 'off', voice: null, recording: null });
   const join_ = await api.request('/bot/join', { method: 'POST', headers: { Authorization: 'Bearer pw-12345678' }, body: '{"channelId":"222222222222222222"}' });
   assert.equal(join_.status, 409);
 });

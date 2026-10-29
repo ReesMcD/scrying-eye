@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import { generateDependencyReport } from '@discordjs/voice';
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { SessionRecorder } from '../recording/SessionRecorder.js';
+import { VoiceLink } from '../recording/VoiceLink.js';
 import type { UtteranceRecord } from '../recording/UtteranceRecorder.js';
 import { ConfigError, loadConfig } from '../config/load.js';
 import { loadDotEnv } from '../util/env.js';
@@ -76,6 +77,7 @@ let decryptFailureLines = 0;
 let daveLines = 0;
 let resubscribes = 0;
 let recorder: SessionRecorder | undefined;
+let link: VoiceLink | undefined;
 let stopping = false;
 
 function event(e: string): void {
@@ -99,25 +101,24 @@ client.once(Events.ClientReady, async (ready) => {
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel || !channel.isVoiceBased()) fail(`Channel ${channelId} is not a voice channel the bot can see`);
 
+  try {
+    link = await VoiceLink.open({ guild: channel.guild, channel, log: event, debug });
+  } catch (err) {
+    fail((err as Error).message);
+  }
+  link.on('lost', () => void stop());
   recorder = new SessionRecorder({
     sessionId,
     sessionDir,
-    guild: channel.guild,
-    channel,
+    link,
     filter: { ignoreUserIds: new Set(config.recording.ignore_users), ignoreBots: config.recording.ignore_bots, selfId: ready.user.id },
     silenceMs,
     log: event,
-    debug,
     source: 'spike',
   });
   recorder.on('utterance', (rec: UtteranceRecord) => onUtterance(rec));
   recorder.on('resubscribe', () => resubscribes++);
-  recorder.on('lost', () => void stop());
-  try {
-    await recorder.start();
-  } catch (err) {
-    fail((err as Error).message);
-  }
+  recorder.start();
   event(`Joined #${channel.name} in ${channel.guild.name}. Recording — Ctrl+C to stop.`);
 
   const minutes = args.minutes ? Number(args.minutes) : undefined;
@@ -154,6 +155,7 @@ async function stop(): Promise<void> {
   stopping = true;
   event('stopping');
   await recorder.stop();
+  link?.close();
   const status = recorder.status();
   const skipped = new Map(status.skipped.map((s) => [s.id, { name: s.name, reason: s.reason }]));
 

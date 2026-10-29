@@ -9,7 +9,7 @@ import { applyToEnv, generatePassword, SecretStore } from '../electron/secrets.j
 
 const labels = (items: MenuItem[]) => items.map((i) => i.label ?? '---');
 const base: MenuState = {
-  bot: { state: 'ready', user: 'Bot#1', recording: null },
+  bot: { state: 'ready', user: 'Bot#1', voice: null, recording: null },
   guilds: [
     {
       id: '1',
@@ -43,6 +43,7 @@ test('recording menu: status, participants, stop', () => {
     now: 3_725_000,
     bot: {
       state: 'ready',
+      voice: null,
       recording: {
         sessionId: 's2',
         guildId: '1',
@@ -62,7 +63,7 @@ test('recording menu: status, participants, stop', () => {
 });
 
 test('missing keys and updates are surfaced; disconnected bot says why', () => {
-  const menu = buildMenu({ ...base, missingKeys: ['Discord token'], update: { version: '0.4.0', url: 'u' }, bot: { state: 'error', error: 'Discord rejected the bot token', recording: null } });
+  const menu = buildMenu({ ...base, missingKeys: ['Discord token'], update: { version: '0.4.0', url: 'u' }, bot: { state: 'error', error: 'Discord rejected the bot token', voice: null, recording: null } });
   assert.equal(menu[0]!.label, '⚠︎ Set up: Discord token…');
   assert.deepEqual(menu[0]!.action, { kind: 'open', route: 'settings/keys' });
   assert.ok(labels(menu).includes('Discord: Discord rejected the bot token'));

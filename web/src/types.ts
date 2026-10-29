@@ -52,6 +52,7 @@ export type {
   DndBeyondCharacter,
   PromptInfo,
   RecordingStatus,
+  VoiceStatus,
   SessionSummary,
   SummaryMeta,
   TranscriptLine,

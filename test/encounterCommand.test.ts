@@ -103,9 +103,13 @@ test('the app\'s Post to Discord: needs a public address and the bot; posts the 
   const store = new EncounterStore(join(root, 'data'), undefined, () => {});
   const posts: EncounterPost[] = [];
   const bot = {
-    status: (): BotStatus => ({ state: 'ready', recording: null }),
+    status: (): BotStatus => ({ state: 'ready', voice: null, recording: null }),
     guilds: () => [],
-    join: async () => {
+    connect: async () => {
+      throw new Error('unused');
+    },
+    leave: () => {},
+    record: async () => {
       throw new Error('unused');
     },
     stop: async () => ({ sessionId: '' }),

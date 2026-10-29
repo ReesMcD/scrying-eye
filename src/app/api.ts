@@ -1,5 +1,5 @@
 import { PublicLink, systemTailscale, type TailscaleCli } from './funnel.js';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { join } from 'node:path';
@@ -287,16 +287,42 @@ export function createApi(opts: ApiOptions): Hono {
   );
 
   // --- Bot / recording --------------------------------------------------------------------------
-  const noBot: BotStatus = { state: 'off', recording: null };
+  const noBot: BotStatus = { state: 'off', voice: null, recording: null };
   api.get('/bot', (c) => c.json(opts.bot?.status() ?? noBot));
   api.get('/bot/live', (c) => c.json(opts.bot?.liveTranscript?.() ?? { sessionId: null, lines: [] }));
   api.get('/bot/guilds', (c) => c.json(opts.bot?.guilds() ?? []));
-  api.post('/bot/join', async (c) => {
-    if (!opts.bot) return c.json({ error: 'The Discord bot is not running (no DISCORD_TOKEN)' }, 409);
+  /** A voice channel from the body, or why not. */
+  const channelOf = async (c: Context): Promise<{ channelId: string; campaign?: string } | Response> => {
     const { channelId, campaign } = (await c.req.json().catch(() => ({}))) as { channelId?: string; campaign?: unknown };
     if (!channelId || !/^\d{15,22}$/.test(channelId)) return c.json({ error: 'channelId is required' }, 400);
+    return { channelId, ...(typeof campaign === 'string' && campaign ? { campaign } : {}) };
+  };
+  // Join (to play music) and record are separate: recording joins first if needed, and stopping stays in the channel.
+  api.post('/bot/join', async (c) => {
+    if (!opts.bot) return c.json({ error: 'The Discord bot is not running (no DISCORD_TOKEN)' }, 409);
+    const body = await channelOf(c);
+    if (body instanceof Response) return body;
     try {
-      return c.json(await opts.bot.join(channelId, typeof campaign === 'string' && campaign ? { campaign } : {}));
+      return c.json(await opts.bot.connect(body.channelId));
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 409);
+    }
+  });
+  api.post('/bot/leave', (c) => {
+    if (!opts.bot) return c.json({ error: 'The Discord bot is not running' }, 409);
+    try {
+      opts.bot.leave();
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 409);
+    }
+  });
+  api.post('/bot/record', async (c) => {
+    if (!opts.bot) return c.json({ error: 'The Discord bot is not running (no DISCORD_TOKEN)' }, 409);
+    const body = await channelOf(c);
+    if (body instanceof Response) return body;
+    try {
+      return c.json(await opts.bot.record(body.channelId, body.campaign ? { campaign: body.campaign } : {}));
     } catch (err) {
       return c.json({ error: (err as Error).message }, 409);
     }

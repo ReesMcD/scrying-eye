@@ -82,8 +82,8 @@ test('roster IDs are readable slugs, unique, always starting with a letter', () 
 test('/record campaign: picks the campaign for the recording', async () => {
   const joined: unknown[] = [];
   const bot = {
-    status: () => ({ state: 'ready' as const, recording: null }),
-    join: async (channelId: string, opts?: { campaign?: string }) => (joined.push([channelId, opts]), { channelName: 'table' }) as never,
+    status: () => ({ state: 'ready' as const, voice: null, recording: null }),
+    record: async (channelId: string, opts?: { campaign?: string }) => (joined.push([channelId, opts]), { channelName: 'table' }) as never,
     stop: async () => ({ sessionId: '' }),
   };
   await runCommand({ name: 'record', guildId: 'g', memberVoiceChannelId: TABLE, campaign: 'strahd' }, bot);

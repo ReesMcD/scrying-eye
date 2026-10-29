@@ -422,7 +422,7 @@ What's in it:
   - **YAML**: raw editing of `config.yaml`.
 
   Saving keeps the comments in `config.yaml`.
-- **Record**: pick a voice channel and **Join & record**, with a live view of who's being recorded, and **Stop**.
+- **Record**: pick a voice channel and **Record**, with a live view of who's being recorded, and **Stop**. **Join** puts the bot in a channel without recording (just to play music); it stays there after you stop recording until you **Leave**.
   The same works from Discord while the app runs: `/record` (the voice channel you're in, or pick
   one), `/stop` and `/status`. Replies are visible only to you. `/record` and `/stop` are for
   people with **Manage Server** by default; to let a role use them, open Server Settings →

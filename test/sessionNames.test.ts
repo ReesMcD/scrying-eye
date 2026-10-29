@@ -46,7 +46,7 @@ function app(opts: { recording?: string } = {}) {
   const ran: string[] = [];
   const jobs = new JobRunner(async (job) => void ran.push(job.step));
   const bot = opts.recording
-    ? { status: () => ({ state: 'ready' as const, recording: { sessionId: opts.recording } as never }), guilds: () => [], join: async () => ({}) as never, stop: async () => ({ sessionId: '' }), on: () => bot, off: () => bot }
+    ? { status: () => ({ state: 'ready' as const, voice: null, recording: { sessionId: opts.recording } as never }), guilds: () => [], connect: async () => ({}) as never, leave: () => {}, record: async () => ({}) as never, stop: async () => ({ sessionId: '' }), on: () => bot, off: () => bot }
     : undefined;
   const api = createApi({ password: 'pw', dataDir, configStore: new ConfigStore(join(root, 'config.yaml')), jobs, ...(bot ? { bot } : {}) });
   const call = (method: string, path: string, body?: unknown) =>

@@ -144,7 +144,7 @@ async function run(action: MenuAction): Promise<void> {
   try {
     switch (action.kind) {
       case 'join':
-        await bot.join(action.channelId);
+        await bot.record(action.channelId);
         break;
       case 'stop': {
         const { sessionId } = await bot.stop();
@@ -451,7 +451,7 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
         }
       },
       onSilence: () => bot.music.stop(),
-      inChannel: () => !!bot.status().recording,
+      inChannel: () => !!bot.status().voice,
       log,
       spotify: { name: 'Scrying Eye', dir: join(userData, 'spotify') },
     });
@@ -477,7 +477,7 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
     bot.on('status', soon);
     let wasInChannel = false;
     bot.on('status', (s) => {
-      if (!!s.recording !== wasInChannel) ((wasInChannel = !!s.recording), music.changed());
+      if (!!s.voice !== wasInChannel) ((wasInChannel = !!s.voice), music.changed());
     });
     server.jobs.on('job', (j) => (j.status === 'done' || j.status === 'failed' ? soon() : undefined));
     setInterval(refreshTitle, 1000).unref();
