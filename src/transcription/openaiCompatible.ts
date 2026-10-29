@@ -38,6 +38,8 @@ export class OpenAICompatibleTranscriber implements Transcriber {
   private readonly url: string;
   private readonly model: string;
   private readonly fetchImpl: typeof fetch;
+  /** When the provider said to come back (a rate limit): every request waits, not just the one told. */
+  private pausedUntil = 0;
 
   constructor(private readonly options: OpenAICompatibleOptions) {
     const defaults = PROVIDERS[options.provider];
@@ -50,7 +52,10 @@ export class OpenAICompatibleTranscriber implements Transcriber {
   async transcribe(file: string, opts: TranscribeOptions = {}): Promise<TranscriptionResult> {
     const bytes = await readFile(file);
     const ext = file.split('.').pop()?.toLowerCase() ?? '';
+    const sleep = this.options.retry?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     return withRetry(async () => {
+      const wait = this.pausedUntil - Date.now();
+      if (wait > 0) await sleep(wait);
       const form = new FormData();
       form.append('file', new Blob([bytes], { type: MIME[ext] ?? 'application/octet-stream' }), basename(file));
       form.append('model', this.model);
@@ -69,7 +74,9 @@ export class OpenAICompatibleTranscriber implements Transcriber {
       });
       if (!res.ok) {
         const body = (await res.text().catch(() => '')).slice(0, 500);
-        throw new HttpError(res.status, `${this.id} transcription failed (${res.status}): ${body}`, parseRetryAfter(res.headers.get('retry-after')));
+        const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'));
+        if (res.status === 429 && retryAfterMs) this.pausedUntil = Math.max(this.pausedUntil, Date.now() + retryAfterMs);
+        throw new HttpError(res.status, `${this.id} transcription failed (${res.status}): ${body}`, retryAfterMs);
       }
       return normalize((await res.json()) as VerboseJson);
     }, this.options.retry);

@@ -68,6 +68,7 @@ export async function transcribeSession(
   log(`${utterances.length} utterances from ${byUser.size} speakers → ${plans.length} batches (${skippedShort} too short, skipped)`);
 
   let fromCache = 0;
+  let done = 0;
   const results = await mapLimit(plans, config.concurrency, async (plan) => {
     const name = `${plan.userId}-${String(plan.index).padStart(3, '0')}`;
     const hash = planHash(plan, sessionDir, config.prompt, config.language);
@@ -75,6 +76,7 @@ export async function transcribeSession(
     const cached = readJson<RawCache>(rawFile);
     if (cached && cached.planHash === hash && cached.transcriber === transcriber.id) {
       fromCache++;
+      done++;
       return { plan, result: cached.result };
     }
     const audioFile = join(paths.batchesDir(sessionDir), `${name}.flac`);
@@ -87,7 +89,8 @@ export async function transcribeSession(
       ...(config.prompt ? { prompt: config.prompt } : {}),
     });
     writeJson(rawFile, { planHash: hash, transcriber: transcriber.id, result } satisfies RawCache);
-    log(`  ${name}: ${plan.durationSec.toFixed(0)}s audio, ${plan.clips.length} utterances → ${result.segments.length} segments in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    done++;
+    log(`  [${done}/${plans.length}] ${name}: ${plan.durationSec.toFixed(0)}s audio, ${plan.clips.length} utterances → ${result.segments.length} segments in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     return { plan, result };
   });
 

@@ -60,3 +60,19 @@ test('factory reads the key from the environment and honours overrides', () => {
   assert.throws(() => createTranscriber(config.transcription, {}), /OPENAI_API_KEY/);
   assert.equal(createTranscriber(config.transcription, { OPENAI_API_KEY: 'x' }).id, 'openai:large-v3');
 });
+
+test('a rate limit pauses every request, not just the one that was told to wait', async () => {
+  let calls = 0;
+  const fakeFetch = (async () => {
+    if (++calls === 1) return new Response('{"error":{"message":"seconds of audio per hour"}}', { status: 429, headers: { 'retry-after': '30' } });
+    return Response.json({ text: 'ok', segments: [], words: [] });
+  }) as unknown as typeof fetch;
+  const slept: number[] = [];
+  const t = new OpenAICompatibleTranscriber({ provider: 'groq', apiKey: 'k', fetch: fakeFetch, retry: { rateLimitBudgetMs: 60 * 60_000, sleep: async (ms) => void slept.push(ms) } });
+
+  await t.transcribe(file);
+  // The next batch (no real time has passed) waits out the same pause before it asks at all.
+  await t.transcribe(file);
+  assert.equal(calls, 3, 'one 429, then each batch once');
+  assert.ok(slept.length >= 2 && slept.every((ms) => ms > 29_000 && ms <= 30_000), `waited ${slept.join(', ')}`);
+});
