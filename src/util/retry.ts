@@ -26,6 +26,12 @@ export interface RetryOptions {
   retries?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
+  /**
+   * How long in all to wait out rate limits (429s) on top of `retries`. A 429 then waits as long
+   * as the server says (its Retry-After, not capped by `maxDelayMs`) and doesn't use up a retry.
+   * Hourly quotas, like Groq's free tier's 2 hours of audio per hour, need minutes, not seconds.
+   */
+  rateLimitBudgetMs?: number;
   onRetry?: (err: unknown, attempt: number, delayMs: number) => void;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -42,14 +48,24 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   const base = options.baseDelayMs ?? 1000;
   const max = options.maxDelayMs ?? 60_000;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  for (let attempt = 0; ; attempt++) {
+  let rateLimitLeft = options.rateLimitBudgetMs ?? 0;
+  for (let attempt = 0, tries = 0; ; tries++) {
     try {
       return await fn();
     } catch (err) {
-      if (attempt >= retries || !isRetryable(err)) throw err;
-      const backoff = Math.min(max, base * 2 ** attempt) * (0.5 + Math.random() / 2);
-      const delay = err instanceof HttpError && err.retryAfterMs !== undefined ? Math.min(max, err.retryAfterMs) : backoff;
-      options.onRetry?.(err, attempt + 1, delay);
+      if (!isRetryable(err)) throw err;
+      const backoff = (n: number) => Math.min(max, base * 2 ** n) * (0.5 + Math.random() / 2);
+      if (err instanceof HttpError && err.status === 429 && rateLimitLeft > 0) {
+        const delay = Math.min(rateLimitLeft, Math.max(1000, err.retryAfterMs ?? backoff(tries)));
+        rateLimitLeft -= delay;
+        options.onRetry?.(err, tries + 1, delay);
+        await sleep(delay);
+        continue;
+      }
+      if (attempt >= retries) throw err;
+      const delay = err instanceof HttpError && err.retryAfterMs !== undefined ? Math.min(max, err.retryAfterMs) : backoff(attempt);
+      attempt++;
+      options.onRetry?.(err, tries + 1, delay);
       await sleep(delay);
     }
   }

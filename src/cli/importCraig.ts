@@ -30,7 +30,7 @@ if (process.argv.includes('--no-transcribe')) {
 } else {
   let transcriber;
   try {
-    transcriber = createTranscriber(config.transcription);
+    transcriber = createTranscriber(config.transcription, process.env, { waitForRateLimits: true, log: console.log });
   } catch (err) {
     die(`${(err as Error).message}\nAudio is imported; run "npm run transcribe -- ${result.sessionId}" once the key is set.`);
   }

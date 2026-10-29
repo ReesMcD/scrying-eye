@@ -54,3 +54,32 @@ test('mapLimit preserves order and caps concurrency', async () => {
   assert.deepEqual(out, [10, 20, 30, 40, 50]);
   assert.equal(peak, 2);
 });
+
+test('an hourly quota (429) is waited out for as long as the server says, without using up retries', async () => {
+  let calls = 0;
+  const delays: number[] = [];
+  const result = await withRetry(
+    async () => {
+      if (++calls <= 8) throw new HttpError(429, 'seconds of audio per hour', 5 * 60_000);
+      return 'ok';
+    },
+    { ...noSleep, retries: 2, rateLimitBudgetMs: 75 * 60_000, onRetry: (_e, _a, d) => delays.push(d) },
+  );
+  assert.equal(result, 'ok');
+  assert.deepEqual(delays, Array(8).fill(5 * 60_000)); // not capped at maxDelayMs (60 s)
+});
+
+test('gives up on a rate limit once its wait budget is spent', async () => {
+  let calls = 0;
+  await assert.rejects(
+    withRetry(async () => { calls++; throw new HttpError(429, 'quota', 30 * 60_000); }, { ...noSleep, retries: 0, rateLimitBudgetMs: 60 * 60_000 }),
+    /quota/,
+  );
+  assert.equal(calls, 3); // waits 30 + 30 min, then no budget and no retries left
+});
+
+test('without a rate-limit budget, a 429 counts as an ordinary retry', async () => {
+  let calls = 0;
+  await assert.rejects(withRetry(async () => { calls++; throw new HttpError(429, 'slow down', 1000); }, { ...noSleep, retries: 2 }));
+  assert.equal(calls, 3);
+});

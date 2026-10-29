@@ -16,7 +16,7 @@ import { UPLOAD_TOKEN_ENV, uploadRecap } from '../upload/recapUpload.js';
 export interface StepDeps {
   dataDir: string;
   configPath?: string;
-  transcriber?: (config: Config['transcription']) => Transcriber;
+  transcriber?: (config: Config['transcription'], log: (msg: string) => void) => Transcriber;
   summaryModel?: (config: Config) => SummaryModel;
   /** For tests: the upload's HTTP client and retry delay. */
   fetch?: typeof fetch;
@@ -25,7 +25,7 @@ export interface StepDeps {
 
 /** Connects job steps to the pipeline. Config is re-read for every job, so edits apply immediately. */
 export function pipelineRunner(deps: StepDeps): StepRunner {
-  const makeTranscriber = deps.transcriber ?? ((c) => createTranscriber(c));
+  const makeTranscriber = deps.transcriber ?? ((c, log) => createTranscriber(c, process.env, { waitForRateLimits: true, log }));
   const makeModel =
     deps.summaryModel ??
     ((c: Config) => {
@@ -40,7 +40,7 @@ export function pipelineRunner(deps: StepDeps): StepRunner {
 
     switch (job.step) {
       case 'transcribe': {
-        const stats = await transcribeSession(dir, config.transcription, makeTranscriber(config.transcription), log);
+        const stats = await transcribeSession(dir, config.transcription, makeTranscriber(config.transcription, log), log);
         log(`Transcribed: ${stats.segments} segments from ${stats.speakers} speakers (${stats.batchesFromCache}/${stats.batches} batches cached, ${stats.dropped} dropped)`);
         const merged = mergeSession(dir, config);
         log(`Transcript: ${merged.lines} lines`);

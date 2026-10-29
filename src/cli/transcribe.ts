@@ -10,7 +10,7 @@ const { config } = loaded;
 const sessionDir = resolveSessionDir(process.argv[2], 'Usage: npm run transcribe -- <sessionDir|sessionId> [--no-merge] [--summarize]');
 let transcriber;
 try {
-  transcriber = createTranscriber(config.transcription);
+  transcriber = createTranscriber(config.transcription, process.env, { waitForRateLimits: true, log: console.log });
 } catch (err) {
   die((err as Error).message);
 }
