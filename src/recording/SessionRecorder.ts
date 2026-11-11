@@ -47,6 +47,8 @@ export class SessionRecorder extends EventEmitter {
   private readonly active = new Map<string, Promise<void>>();
   private readonly resolving = new Set<string>();
   private stopping = false;
+  /** The link's reconnects before this recording began (it may have been in the channel for music). */
+  private readonly reconnectsBefore: number;
   /** Removes this recording's listeners from the voice link and its connection. */
   private unwire: () => void = () => {};
   private readonly info: SessionInfo & { source: string };
@@ -56,6 +58,7 @@ export class SessionRecorder extends EventEmitter {
     super();
     this.log = opts.log ?? (() => {});
     const { guild, channel } = opts.voice;
+    this.reconnectsBefore = opts.voice.reconnectCount;
     this.info = {
       id: opts.sessionId,
       startedAt: this.startedAt,
@@ -80,7 +83,7 @@ export class SessionRecorder extends EventEmitter {
       state: this.state,
       participants: [...this.participants].map(([id, p]) => ({ id, ...p })),
       skipped: [...this.skipped].map(([id, s]) => ({ id, ...s })),
-      reconnects: this.opts.voice.reconnectCount,
+      reconnects: this.opts.voice.reconnectCount - this.reconnectsBefore,
     };
   }
 

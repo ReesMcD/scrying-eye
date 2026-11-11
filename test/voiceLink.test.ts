@@ -29,13 +29,16 @@ const recorderOn = (voice: VoiceLink, sessionId: string) => {
 
 test('a recording on a voice channel the bot is already in: follows its state, and stopping leaves it ready for the next', async () => {
   const { link, speaking, asLink } = fakeLink();
+  link.reconnectCount = 2;
   const first = recorderOn(asLink, 's1');
   first.start();
   assert.equal(first.status().state, 'recording');
   assert.equal(first.status().channelName, 'game-night');
   link.emit('state', 'reconnecting');
   assert.equal(first.status().state, 'reconnecting', 'a drop shows on the recording');
+  link.reconnectCount = 3;
   link.emit('state', 'connected');
+  assert.equal(first.status().reconnects, 1, 'counted from the recording’s start, not the bot’s time in the channel');
   await first.stop();
   assert.ok(readJson<SessionInfo>(paths.session(dirs.get('s1')!))?.stoppedAt, 'saved as stopped');
   assert.equal(speaking.listenerCount('start') + speaking.listenerCount('end') + link.listenerCount('state'), 0, 'nothing left listening after stop');
