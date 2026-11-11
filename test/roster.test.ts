@@ -83,8 +83,10 @@ test('/record campaign: picks the campaign for the recording', async () => {
   const joined: unknown[] = [];
   const bot = {
     status: () => ({ state: 'ready' as const, recording: null }),
-    join: async (channelId: string, opts?: { campaign?: string }) => (joined.push([channelId, opts]), { channelName: 'table' }) as never,
+    join: async () => ({}) as never,
+    record: async (channelId: string, opts?: { campaign?: string }) => (joined.push([channelId, opts]), { channelName: 'table' }) as never,
     stop: async () => ({ sessionId: '' }),
+    leave: async () => {},
   };
   await runCommand({ name: 'record', guildId: 'g', memberVoiceChannelId: TABLE, campaign: 'strahd' }, bot);
   await runCommand({ name: 'record', guildId: 'g', memberVoiceChannelId: TABLE }, bot);

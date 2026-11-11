@@ -1,5 +1,5 @@
 import { PublicLink, systemTailscale, type TailscaleCli } from './funnel.js';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { join } from 'node:path';
@@ -83,6 +83,9 @@ export function pollServiceFor(dataDir: string, configStore: ConfigStore, bot: B
 export function wikiEncountersFor(dataDir: string, configStore: ConfigStore, doFetch?: typeof fetch): WikiEncounters {
   return new WikiEncounters(dataDir, () => configSchema.parse(configStore.read().config ?? {}), () => process.env[UPLOAD_TOKEN_ENV], doFetch);
 }
+
+/** A request the API refuses as malformed (400), not as impossible right now (409). */
+class BadRequest extends Error {}
 
 /** The wiki's dungeons, from the same address and key. */
 export function wikiDungeonsFor(dataDir: string, configStore: ConfigStore, doFetch?: typeof fetch): WikiDungeons {
@@ -291,24 +294,29 @@ export function createApi(opts: ApiOptions): Hono {
   api.get('/bot', (c) => c.json(opts.bot?.status() ?? noBot));
   api.get('/bot/live', (c) => c.json(opts.bot?.liveTranscript?.() ?? { sessionId: null, lines: [] }));
   api.get('/bot/guilds', (c) => c.json(opts.bot?.guilds() ?? []));
-  api.post('/bot/join', async (c) => {
+  const botCall = (run: (bot: BotControl, body: Record<string, unknown>) => Promise<unknown>) => async (c: Context) => {
     if (!opts.bot) return c.json({ error: 'The Discord bot is not running (no DISCORD_TOKEN)' }, 409);
-    const { channelId, campaign } = (await c.req.json().catch(() => ({}))) as { channelId?: string; campaign?: unknown };
-    if (!channelId || !/^\d{15,22}$/.test(channelId)) return c.json({ error: 'channelId is required' }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     try {
-      return c.json(await opts.bot.join(channelId, typeof campaign === 'string' && campaign ? { campaign } : {}));
+      return c.json((await run(opts.bot, body)) ?? { ok: true });
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 409);
+      return c.json({ error: (err as Error).message }, err instanceof BadRequest ? 400 : 409);
     }
-  });
-  api.post('/bot/stop', async (c) => {
-    if (!opts.bot) return c.json({ error: 'The Discord bot is not running' }, 409);
-    try {
-      return c.json(await opts.bot.stop());
-    } catch (err) {
-      return c.json({ error: (err as Error).message }, 409);
-    }
-  });
+  };
+  const voiceChannel = (body: Record<string, unknown>) => {
+    const channelId = body.channelId;
+    if (typeof channelId !== 'string' || !/^\d{15,22}$/.test(channelId)) throw new BadRequest('channelId is required');
+    return channelId;
+  };
+  /** Into a voice channel without recording (music). */
+  api.post('/bot/join', botCall((bot, body) => bot.join(voiceChannel(body))));
+  /** Starts recording, joining the channel first if needed. */
+  api.post(
+    '/bot/record',
+    botCall((bot, body) => bot.record(voiceChannel(body), typeof body.campaign === 'string' && body.campaign ? { campaign: body.campaign } : {})),
+  );
+  api.post('/bot/stop', botCall((bot) => bot.stop()));
+  api.post('/bot/leave', botCall((bot) => bot.leave()));
 
   api.route(
     '/',

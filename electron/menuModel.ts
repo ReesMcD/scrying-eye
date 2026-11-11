@@ -13,7 +13,9 @@ export interface MenuItem {
 
 export type MenuAction =
   | { kind: 'join'; channelId: string }
+  | { kind: 'record'; channelId: string }
   | { kind: 'stop' }
+  | { kind: 'leave' }
   | { kind: 'open'; route?: string }
   | { kind: 'toggleLogin' }
   | { kind: 'update'; url: string }
@@ -43,13 +45,13 @@ export function elapsed(ms: number): string {
 
 const sep: MenuItem = { type: 'separator' };
 
-function channelItems(guild: GuildInfo): MenuItem[] {
+function channelItems(guild: GuildInfo, kind: 'join' | 'record'): MenuItem[] {
   const channels = [...guild.channels].sort((a, b) => b.members.length - a.members.length);
   return channels.map((c) => {
     const people = c.members.filter((m) => !m.bot).map((m) => m.name);
     return {
       label: people.length ? `${c.name} — ${people.slice(0, 3).join(', ')}${people.length > 3 ? ` +${people.length - 3}` : ''}` : c.name,
-      action: { kind: 'join', channelId: c.id },
+      action: { kind, channelId: c.id },
     };
   });
 }
@@ -57,6 +59,7 @@ function channelItems(guild: GuildInfo): MenuItem[] {
 export function buildMenu(s: MenuState): MenuItem[] {
   const items: MenuItem[] = [];
   const rec = s.bot.recording;
+  const voice = s.bot.voice;
 
   if (s.missingKeys.length) {
     items.push({ label: `⚠︎ Set up: ${s.missingKeys.join(', ')}…`, action: { kind: 'open', route: 'settings/keys' } }, sep);
@@ -67,12 +70,23 @@ export function buildMenu(s: MenuState): MenuItem[] {
     items.push({ label: `● ${verb} #${rec.channelName} — ${elapsed(s.now - rec.startedAt)}`, enabled: false });
     for (const p of rec.participants) items.push({ label: `    ${p.speaking ? '🗣' : '·'} ${p.name}`, enabled: false });
     if (rec.participants.length === 0) items.push({ label: '    Nobody has spoken yet', enabled: false });
-    items.push({ label: 'Stop Recording', action: { kind: 'stop' }, enabled: rec.state !== 'stopping' }, { label: 'Show Recording…', action: { kind: 'open', route: 'record' } });
+    items.push(
+      { label: 'Stop Recording', action: { kind: 'stop' }, enabled: rec.state !== 'stopping' },
+      { label: 'Stop & Leave', action: { kind: 'leave' }, enabled: rec.state !== 'stopping' },
+      { label: 'Show Recording…', action: { kind: 'open', route: 'record' } },
+    );
+  } else if (voice) {
+    const verb = voice.state === 'connected' ? 'In' : voice.state === 'reconnecting' ? 'Reconnecting to' : 'Joining';
+    items.push(
+      { label: `🔊 ${verb} #${voice.channelName} — not recording`, enabled: false },
+      { label: 'Start Recording', action: { kind: 'record', channelId: voice.channelId }, enabled: voice.state === 'connected' },
+      { label: `Leave #${voice.channelName}`, action: { kind: 'leave' } },
+    );
   } else if (s.bot.state === 'ready') {
     const guilds = s.guilds.filter((g) => g.channels.length);
+    const pick = (kind: 'join' | 'record'): MenuItem[] => (guilds.length === 1 ? channelItems(guilds[0]!, kind) : guilds.map((g) => ({ label: g.name, submenu: channelItems(g, kind) })));
     if (guilds.length === 0) items.push({ label: 'No voice channels (invite the bot to a server)', enabled: false });
-    else if (guilds.length === 1) items.push({ label: 'Join & Record', submenu: channelItems(guilds[0]!) });
-    else items.push({ label: 'Join & Record', submenu: guilds.map((g) => ({ label: g.name, submenu: channelItems(g) })) });
+    else items.push({ label: 'Join & Record', submenu: pick('record') }, { label: 'Join (No Recording)', submenu: pick('join') });
   } else {
     const label = s.bot.state === 'connecting' ? 'Connecting to Discord…' : s.bot.state === 'error' ? `Discord: ${s.bot.error ?? 'error'}` : 'Discord bot is off';
     items.push({ label, enabled: false });

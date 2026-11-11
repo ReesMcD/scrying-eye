@@ -55,7 +55,15 @@ function Shell({ route }: { route: string[] }) {
         </nav>
         <div className="bot-status" role="status">
           <span className={`status-dot ${recording ? 'recording' : bot?.state === 'ready' ? 'ready' : ''}`} />
-          {recording ? `Recording #${recording.channelName}` : bot?.state === 'ready' ? 'Bot online · idle' : bot?.state === 'connecting' ? 'Bot connecting…' : 'Bot off'}
+          {recording
+            ? `Recording #${recording.channelName}`
+            : bot?.voice
+              ? `In #${bot.voice.channelName} · not recording`
+              : bot?.state === 'ready'
+                ? 'Bot online · idle'
+                : bot?.state === 'connecting'
+                  ? 'Bot connecting…'
+                  : 'Bot off'}
         </div>
       </aside>
       <div className="main">

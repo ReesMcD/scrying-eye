@@ -1,18 +1,23 @@
-import type { BotStatus, GuildInfo, LiveTranscript, LiveUpdate, PollsState, RecordingStatus } from '../shared/types.js';
+import type { BotStatus, GuildInfo, LiveTranscript, LiveUpdate, PollsState, RecordingStatus, VoiceStatus } from '../shared/types.js';
 import type { PollPoster } from '../polls/PollService.js';
 
 export type { LiveUpdate };
 import type { EncounterPost } from './encounterCommand.js';
 
-export type { BotStatus, GuildInfo, RecordingStatus, VoiceChannelInfo } from '../shared/types.js';
+export type { BotStatus, GuildInfo, RecordingStatus, VoiceChannelInfo, VoiceStatus } from '../shared/types.js';
 
 /** What the API and menu bar need from the bot (a fake implements this in tests). */
 export interface BotControl {
   status(): BotStatus;
   guilds(): GuildInfo[];
-  /** Starts recording; `campaign` (an ID) overrides the channel's default campaign. */
-  join(channelId: string, opts?: { campaign?: string }): Promise<RecordingStatus>;
+  /** Joins a voice channel without recording (for music); moves there from another one. */
+  join(channelId: string): Promise<VoiceStatus>;
+  /** Starts recording, joining the channel first if needed; `campaign` (an ID) overrides the channel's default campaign. */
+  record(channelId: string, opts?: { campaign?: string }): Promise<RecordingStatus>;
+  /** Stops recording. The bot stays in the channel if it was joined on its own or music is playing. */
   stop(): Promise<{ sessionId: string }>;
+  /** Leaves the voice channel, stopping a recording first. */
+  leave(): Promise<void>;
   on(event: 'status', listener: (s: BotStatus) => void): unknown;
   off(event: 'status', listener: (s: BotStatus) => void): unknown;
   /** The current recording's live transcript; "live" events carry only the new lines. */

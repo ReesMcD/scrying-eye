@@ -3,7 +3,7 @@ import { api, subscribe } from '../api';
 import { hms, speakerHue } from '../format';
 import { href } from '../router';
 import { campaignFor, campaignForChannel, charactersByAccount } from '../../../src/config/roster';
-import type { BotStatus, Config, ConfigState, GuildInfo, RecordingStatus, SessionSummary } from '../types';
+import type { BotStatus, Config, ConfigState, GuildInfo, RecordingStatus, SessionSummary, VoiceStatus } from '../types';
 import { Empty } from '../ui';
 import { LiveTranscript } from './LiveTranscript';
 
@@ -37,28 +37,24 @@ export function RecordPage() {
     });
   }, []);
 
-  const join = async (channelId: string) => {
-    setBusy(channelId);
+  /** Runs a bot action, showing its error; `key` marks which button is busy. */
+  const run = async (key: string, action: () => Promise<unknown>) => {
+    setBusy(key);
     setError('');
     try {
-      await api<RecordingStatus>('/bot/join', { method: 'POST', json: { channelId, ...(campaign ? { campaign } : {}) } });
+      await action();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy('');
     }
   };
+  const record = (channelId: string) => run(`record:${channelId}`, () => api<RecordingStatus>('/bot/record', { method: 'POST', json: { channelId, ...(campaign ? { campaign } : {}) } }));
+  const join = (channelId: string) => run(`join:${channelId}`, () => api<VoiceStatus>('/bot/join', { method: 'POST', json: { channelId } }));
+  const leave = () => run('leave', () => api('/bot/leave', { method: 'POST' }));
   const stop = async () => {
     if (!window.confirm('Stop recording?')) return;
-    setBusy('stop');
-    try {
-      const { sessionId } = await api<{ sessionId: string }>('/bot/stop', { method: 'POST' });
-      setLastStopped(sessionId);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy('');
-    }
+    await run('stop', async () => setLastStopped((await api<{ sessionId: string }>('/bot/stop', { method: 'POST' })).sessionId));
   };
 
   if (!status) return error ? <div className="error-box">{error}</div> : <p className="muted">Loading…</p>;
@@ -77,6 +73,7 @@ export function RecordPage() {
       )}
       {rec ? <Recording rec={rec} config={config} onStop={stop} stopping={busy === 'stop'} /> : status.state === 'ready' && (
         <>
+          {status.voice && <InChannel voice={status.voice} busy={busy} onRecord={() => record(status.voice!.channelId)} onLeave={leave} />}
           {config && Object.keys(config.campaigns).length > 0 && (
             <label className="field">
               <span className="field-label">Campaign</span>
@@ -91,7 +88,7 @@ export function RecordPage() {
               <span className="field-hint">You can change it afterwards on the session’s page.</span>
             </label>
           )}
-          {guilds.length > 1 && (
+          {!status.voice && guilds.length > 1 && (
             <select value={guild?.id ?? ''} onChange={(e) => setGuildId(e.target.value)} style={{ marginBottom: 12 }}>
               {guilds.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -100,8 +97,9 @@ export function RecordPage() {
               ))}
             </select>
           )}
-          {!guild && <Empty title="The bot isn't in any server yet">Invite it with the OAuth2 URL from the Discord Developer Portal (README step 4).</Empty>}
-          {guild &&
+          {!status.voice && !guild && <Empty title="The bot isn't in any server yet">Invite it with the OAuth2 URL from the Discord Developer Portal (README step 4).</Empty>}
+          {!status.voice &&
+            guild &&
             [...guild.channels]
               .sort((a, b) => b.members.length - a.members.length)
               .map((c) => (
@@ -116,9 +114,14 @@ export function RecordPage() {
                         <div className="muted small">Campaign: {config.campaigns[campaign || campaignForChannel(config, c.id)!]?.name}</div>
                       )}
                     </div>
-                    <button className={c.members.length ? 'primary' : ''} disabled={!!busy} onClick={() => join(c.id)}>
-                      {busy === c.id ? 'Joining…' : 'Join & record'}
-                    </button>
+                    <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button disabled={!!busy} onClick={() => join(c.id)} title="For music: the bot joins without recording">
+                        {busy === `join:${c.id}` ? 'Joining…' : 'Join'}
+                      </button>
+                      <button className={c.members.length ? 'primary' : ''} disabled={!!busy} onClick={() => record(c.id)}>
+                        {busy === `record:${c.id}` ? 'Joining…' : 'Join & record'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -129,6 +132,33 @@ export function RecordPage() {
 }
 
 const EMPTY = { speakers: {}, campaigns: {}, characters: {} };
+
+/** The bot is in a voice channel without recording: music plays there; record or leave. */
+function InChannel({ voice, busy, onRecord, onLeave }: { voice: VoiceStatus; busy: string; onRecord: () => void; onLeave: () => void }) {
+  const state = voice.state === 'connected' ? 'Not recording. Music plays here.' : voice.state === 'reconnecting' ? 'Reconnecting…' : 'Joining…';
+  return (
+    <div className="card">
+      <div className="row spread" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <strong className="row" style={{ gap: 6 }}>
+            <SpeakerIcon /> In #{voice.channelName}
+          </strong>
+          <div className="muted small">
+            {voice.guildName} · {state}
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <button disabled={!!busy} onClick={onLeave}>
+            {busy === 'leave' ? 'Leaving…' : 'Leave'}
+          </button>
+          <button className="primary" disabled={!!busy || voice.state !== 'connected'} onClick={onRecord}>
+            {busy === `record:${voice.channelId}` ? 'Starting…' : 'Start recording'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** "Sam as Thorin", "Rees", or the Discord name with a note when no speaker is linked to the account. */
 function whoIs(config: Config | null, campaignId: string | undefined, m: { id: string; name: string; bot: boolean }): string {
@@ -156,7 +186,7 @@ function BotBanner({ status }: { status: BotStatus }) {
     return (
       <>
         <p className="muted small">
-          Connected to Discord as {status.user}.{status.commands === 'ready' && ' In Discord: /record, /stop and /status.'}
+          Connected to Discord as {status.user}.{status.commands === 'ready' && ' In Discord: /record, /stop, /join, /leave and /status.'}
         </p>
         {status.commands === 'needs-invite' && status.inviteUrl && (
           <div className="card notice">
@@ -164,7 +194,7 @@ function BotBanner({ status }: { status: BotStatus }) {
             <p className="small" style={{ margin: '6px 0 10px' }}>
               {status.missingPermissions?.length
                 ? `Its role in your server lacks ${status.missingPermissions.join(', ')}${status.missingPermissions.includes('Speak') ? ' (music needs Speak)' : ''}. Open this link and add it again, or give its role those permissions under Server Settings → Roles.`
-                : 'The bot was added to your server without permission for slash commands. Open this link and add it again: nothing is lost, and /record, /stop and /status appear in Discord.'}
+                : 'The bot was added to your server without permission for slash commands. Open this link and add it again: nothing is lost, and /record, /stop, /join, /leave and /status appear in Discord.'}
             </p>
             <a className="button primary" href={status.inviteUrl} target="_blank" rel="noreferrer">
               Re-add the bot ↗

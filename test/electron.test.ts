@@ -27,11 +27,12 @@ const base: MenuState = {
   missingKeys: [],
 };
 
-test('idle menu: join submenu lists busiest channels first with who is there', () => {
+test('idle menu: join & record, or join without recording; channels busiest first with who is there', () => {
   const menu = buildMenu(base);
-  assert.equal(menu[0]!.label, 'Join & Record');
+  assert.deepEqual(labels(menu).slice(0, 2), ['Join & Record', 'Join (No Recording)']);
   assert.deepEqual(labels(menu[0]!.submenu!), ['game-night — Rees', 'lobby']);
-  assert.deepEqual(menu[0]!.submenu![0]!.action, { kind: 'join', channelId: '11' });
+  assert.deepEqual(menu[0]!.submenu![0]!.action, { kind: 'record', channelId: '11' });
+  assert.deepEqual(menu[1]!.submenu![0]!.action, { kind: 'join', channelId: '11' });
   assert.ok(labels(menu).includes('Recent Sessions'));
   assert.match(menu.find((i) => i.label === 'Recent Sessions')!.submenu![0]!.label!, /^Crimson Tide — Sep 20, 2026 ✓$/);
   assert.deepEqual(menu.at(-1)!.action, { kind: 'quit' });
@@ -57,8 +58,18 @@ test('recording menu: status, participants, stop', () => {
       },
     },
   });
-  assert.deepEqual(labels(menu).slice(0, 4), ['● Recording #game-night — 1:02:05', '    🗣 Rees', 'Stop Recording', 'Show Recording…']);
+  assert.deepEqual(labels(menu).slice(0, 5), ['● Recording #game-night — 1:02:05', '    🗣 Rees', 'Stop Recording', 'Stop & Leave', 'Show Recording…']);
   assert.equal(elapsed(65_000), '01:05');
+});
+
+test('in a channel without recording: start recording there, or leave', () => {
+  const voice = { guildId: '1', guildName: 'The Table', channelId: '11', channelName: 'game-night', since: 0, state: 'connected' as const };
+  const menu = buildMenu({ ...base, bot: { ...base.bot, voice } });
+  assert.deepEqual(labels(menu).slice(0, 3), ['🔊 In #game-night — not recording', 'Start Recording', 'Leave #game-night']);
+  assert.deepEqual(menu[1]!.action, { kind: 'record', channelId: '11' });
+  assert.deepEqual(menu[2]!.action, { kind: 'leave' });
+  const joining = buildMenu({ ...base, bot: { ...base.bot, voice: { ...voice, state: 'connecting' } } });
+  assert.equal(joining[1]!.enabled, false, 'no recording until it’s in');
 });
 
 test('missing keys and updates are surfaced; disconnected bot says why', () => {

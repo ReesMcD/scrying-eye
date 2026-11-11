@@ -146,6 +146,12 @@ async function run(action: MenuAction): Promise<void> {
       case 'join':
         await bot.join(action.channelId);
         break;
+      case 'record':
+        await bot.record(action.channelId);
+        break;
+      case 'leave':
+        await bot.leave();
+        break;
       case 'stop': {
         const { sessionId } = await bot.stop();
         openWindow(`sessions/${encodeURIComponent(sessionId)}`);
@@ -197,12 +203,13 @@ function refreshTray(): void {
   };
   tray.setContextMenu(Menu.buildFromTemplate(toElectron(buildMenu(state))));
   tray.setImage(icon(rec ? 'trayRecording' : 'trayTemplate'));
-  tray.setToolTip(rec ? `Recording #${rec.channelName}` : 'Scrying Eye');
+  tray.setToolTip(rec ? `Recording #${rec.channelName}` : status.voice ? `In #${status.voice.channelName}` : 'Scrying Eye');
   refreshTitle();
 
-  // Don't let the Mac sleep mid-recording.
-  if (rec && sleepBlocker === undefined) sleepBlocker = powerSaveBlocker.start('prevent-app-suspension');
-  if (!rec && sleepBlocker !== undefined) {
+  // Don't let the Mac sleep mid-recording, or while the bot is in a channel playing music.
+  const busy = !!(rec || status.voice);
+  if (busy && sleepBlocker === undefined) sleepBlocker = powerSaveBlocker.start('prevent-app-suspension');
+  if (!busy && sleepBlocker !== undefined) {
     powerSaveBlocker.stop(sleepBlocker);
     sleepBlocker = undefined;
   }
@@ -451,7 +458,7 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
         }
       },
       onSilence: () => bot.music.stop(),
-      inChannel: () => !!bot.status().recording,
+      inChannel: () => !!bot.status().voice,
       log,
       spotify: { name: 'Scrying Eye', dir: join(userData, 'spotify') },
     });
@@ -477,7 +484,7 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
     bot.on('status', soon);
     let wasInChannel = false;
     bot.on('status', (s) => {
-      if (!!s.recording !== wasInChannel) ((wasInChannel = !!s.recording), music.changed());
+      if (!!s.voice !== wasInChannel) ((wasInChannel = !!s.voice), music.changed());
     });
     server.jobs.on('job', (j) => (j.status === 'done' || j.status === 'failed' ? soon() : undefined));
     setInterval(refreshTitle, 1000).unref();
