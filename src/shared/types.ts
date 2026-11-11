@@ -275,10 +275,24 @@ export interface LiveTranscript {
   error?: string;
 }
 
+/** The voice channel the bot is in, recording or not (music plays there). */
+export interface VoiceStatus {
+  guildId: string;
+  guildName: string;
+  channelId: string;
+  channelName: string;
+  /** When it joined. */
+  since: number;
+  state: 'connecting' | 'connected' | 'reconnecting';
+}
+
 export interface BotStatus {
   state: 'off' | 'connecting' | 'ready' | 'error';
   user?: string;
   error?: string;
+  /** Set while the bot is in a voice channel. */
+  voice?: VoiceStatus;
+  /** Set while it's recording there. */
   recording: RecordingStatus | null;
   /**
    * Slash commands: registered in every server, or a server refused them because the bot was added

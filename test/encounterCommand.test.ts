@@ -108,7 +108,11 @@ test('the app\'s Post to Discord: needs a public address and the bot; posts the 
     join: async () => {
       throw new Error('unused');
     },
+    record: async () => {
+      throw new Error('unused');
+    },
     stop: async () => ({ sessionId: '' }),
+    leave: async () => {},
     on: () => bot,
     off: () => bot,
     postEncounter: async (post: EncounterPost) => (posts.push(post), { channelName: 'game-night' }),

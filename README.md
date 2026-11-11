@@ -423,15 +423,19 @@ What's in it:
 
   Saving keeps the comments in `config.yaml`.
 - **Record**: pick a voice channel and **Join & record**, with a live view of who's being recorded, and **Stop**.
-  The same works from Discord while the app runs: `/record` (the voice channel you're in, or pick
-  one), `/stop` and `/status`. Replies are visible only to you. `/record` and `/stop` are for
-  people with **Manage Server** by default; to let a role use them, open Server Settings →
-  Integrations → the bot. `/status` is open to everyone, so anyone can check they're being recorded.
+  **Join** puts the bot in the channel without recording (for music, or just to be there), and
+  **Start recording** records where it already is. Stopping a recording keeps the bot in the
+  channel if you joined it yourself or music is playing (**Leave** when you're done); otherwise
+  it leaves as before. The same works from Discord while the app runs: `/record` (the voice
+  channel you're in, or pick one), `/stop`, `/join`, `/leave` and `/status`. Replies are visible
+  only to you. `/record`, `/stop`, `/join` and `/leave` are for people with **Manage Server** by
+  default; to let a role use them, open Server Settings → Integrations → the bot. `/status` is
+  open to everyone, so anyone can check they're being recorded.
 - **Music** (Mac app only): paste a link (YouTube, Tabletop Audio, any web page with sound) and it opens
   in a built-in browser tab. Each tab's sound is mixed and played into the voice channel by the same
   bot that records, so there's no second bot. Several tabs can play at once, each with its own
-  volume and mute, plus a master volume. The bot only plays while it's in a channel, so start a
-  recording first. The browser itself shows on the Mac; from the phone you can open, mute, change
+  volume and mute, plus a master volume. The bot only plays while it's in a voice channel: **Join**
+  one from the Music page (no recording needed), or record. The browser itself shows on the Mac; from the phone you can open, mute, change
   volume and close tabs. *Also play on this Mac* lets you hear the mix locally (capturing a tab
   silences it on the Mac otherwise). The bot's own audio isn't recorded.
   - **Spotify**: its web player won't play in the app's browser (it needs DRM), so the Mac app is a

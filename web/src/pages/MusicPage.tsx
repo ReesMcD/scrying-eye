@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, subscribe } from '../api';
 import type { MusicLibraryState, MusicStatus, MusicTab, SpotifyStatus } from '../types';
 import { ScenesCard, SoundboardCard } from './MusicLibrary';
+import { JoinVoice } from './JoinVoice';
 import { Empty, Toggle } from '../ui';
 
 const QUICK = [
@@ -57,11 +58,18 @@ export function MusicPage() {
   return (
     <div>
       <h1>Music</h1>
-      <p className="muted small" style={{ marginTop: 0 }}>
-        {status.inChannel
-          ? 'Playing into the voice channel. Players hear every tab below, mixed.'
-          : 'The bot plays music while it’s in a voice channel: start a recording to be heard.'}
-      </p>
+      {status.inChannel ? (
+        <p className="muted small" style={{ marginTop: 0 }}>
+          Playing into the voice channel. Players hear every tab below, mixed.
+        </p>
+      ) : (
+        <div className="card notice">
+          <p className="small" style={{ marginTop: 0 }}>
+            The bot plays music while it’s in a voice channel. It doesn’t have to record.
+          </p>
+          <JoinVoice onError={setError} />
+        </div>
+      )}
       {error && <div className="error-box">{error}</div>}
 
       <div className="music-library">
