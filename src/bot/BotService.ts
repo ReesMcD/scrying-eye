@@ -9,6 +9,7 @@ import { encounterChoices, runEncounterCommand, type EncounterCommandDeps, type 
 import { loadConfig } from '../config/load.js';
 import { listUtterances, paths, readJson, skipDamaged, writeJson, type SessionInfo } from '../session/layout.js';
 import { SessionRecorder } from '../recording/SessionRecorder.js';
+import { VoiceLink } from '../recording/VoiceLink.js';
 import { MusicBroadcast } from '../music/broadcast.js';
 import type { ConfigStore } from '../app/configStore.js';
 import type { JobRunner } from '../app/jobs.js';
@@ -68,6 +69,8 @@ export class BotService extends EventEmitter implements BotControl {
   private state: BotStatus['state'] = 'off';
   private error: string | undefined;
   private recorder: SessionRecorder | undefined;
+  /** The voice channel the bot is in, if any. */
+  private voice: VoiceLink | undefined;
   private jobs: JobRunner | undefined;
   private configStore: ConfigStore | undefined;
   private lastEmit = 0;
@@ -406,28 +409,29 @@ export class BotService extends EventEmitter implements BotControl {
     const campaign = opts.campaign ?? campaignForChannel(config, channelId);
     const sessionsRoot = join(this.opts.dataDir, 'sessions');
     const sessionId = sessionIdFor(Date.now(), channel.name, config.transcript.timezone, (id) => existsSync(join(sessionsRoot, id)));
+    const voice = new VoiceLink({ guild: channel.guild, channel, selfMute: false, log: this.log });
+    voice.on('state', () => this.emitStatus());
+    voice.on('lost', () => void this.stop().catch(() => {}));
+    try {
+      await voice.connect();
+    } catch (err) {
+      this.emitStatus(true);
+      throw err;
+    }
+    this.voice = voice;
+    voice.play(this.music.player);
     const recorder = new SessionRecorder({
       sessionId,
       sessionDir: join(sessionsRoot, sessionId),
-      guild: channel.guild,
-      channel,
+      voice,
       filter: { ignoreUserIds: new Set(config.recording.ignore_users), ignoreBots: config.recording.ignore_bots, selfId: this.client.user!.id },
       silenceMs: config.recording.silence_ms,
       ...(campaign ? { campaign } : {}),
-      selfMute: false,
       log: this.log,
     });
     this.recorder = recorder;
     recorder.on('update', () => this.emitStatus());
-    recorder.on('lost', () => void this.stop().catch(() => {}));
-    try {
-      await recorder.start();
-    } catch (err) {
-      this.recorder = undefined;
-      this.emitStatus(true);
-      throw err;
-    }
-    recorder.play(this.music.player);
+    recorder.start();
     if (config.transcription.live) this.startLive(sessionId, join(sessionsRoot, sessionId), config, recorder);
     if (config.recording.announce) {
       await channel.send('🔴 **Recording started.** This call is being recorded and transcribed.').catch(() => this.log('could not post the start notice (needs Send Messages)'));
@@ -442,6 +446,8 @@ export class BotService extends EventEmitter implements BotControl {
     const { sessionId, channelId, startedAt } = recorder.status();
     await recorder.stop();
     this.recorder = undefined;
+    this.voice?.leave();
+    this.voice = undefined;
     await this.live?.transcriber?.stop();
     this.live = undefined;
     this.emitStatus(true);

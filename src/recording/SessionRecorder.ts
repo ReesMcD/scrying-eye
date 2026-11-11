@@ -1,30 +1,25 @@
 import { EventEmitter } from 'node:events';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { EndBehaviorType, VoiceConnectionStatus, entersState, joinVoiceChannel, type AudioPlayer, type VoiceConnection } from '@discordjs/voice';
-import type { Guild, VoiceBasedChannel } from 'discord.js';
+import { EndBehaviorType, type VoiceConnection } from '@discordjs/voice';
 import { paths, readJson, writeJson, type Participant, type RollNote, type SessionInfo } from '../session/layout.js';
 import type { RecordingStatus } from '../bot/types.js';
 import { skipReason, type RecordFilterConfig } from './filters.js';
-import { ReconnectBudget } from './reconnect.js';
 import { UtteranceRecorder, type UtteranceRecord } from './UtteranceRecorder.js';
+import type { VoiceLink, VoiceLinkState } from './VoiceLink.js';
 
 export interface SessionRecorderOptions {
   sessionId: string;
   sessionDir: string;
-  guild: Guild;
-  channel: VoiceBasedChannel;
+  /** The bot's place in the voice channel to record (connected before `start`). */
+  voice: VoiceLink;
   filter: RecordFilterConfig;
   silenceMs: number;
   log?: (msg: string) => void;
-  /** Receives the voice connection's debug lines (DAVE, encryption); turns them on when set. */
-  debug?: (msg: string) => void;
   /** Written to session.json; "bot" sessions are recovered by the app after a crash. */
   source?: string;
   /** The campaign picked for this recording (an ID under `campaigns`). */
   campaign?: string;
-  /** Join muted (default). The app's bot joins unmuted so it can also play music. */
-  selfMute?: boolean;
 }
 
 interface ParticipantState {
@@ -34,54 +29,58 @@ interface ParticipantState {
   speaking: boolean;
 }
 
+const RECORDING_STATE: Record<VoiceLinkState, RecordingStatus['state']> = { connecting: 'connecting', connected: 'recording', reconnecting: 'reconnecting' };
+
 /**
- * One recording: joins a voice channel, records each allowed speaker's utterances to
- * audio/<userId>/<startMs>.ogg, keeps session.json / participants.json / utterances.jsonl up to
- * date (so a crash loses at most the utterance in progress), and reconnects on drops.
- * Events: "update" (status changed), "utterance" (UtteranceRecord), "resubscribe" (userId, error),
- * "lost" (gave up reconnecting).
+ * One recording, on a voice channel the bot is already in: records each allowed speaker's
+ * utterances to audio/<userId>/<startMs>.ogg and keeps session.json / participants.json /
+ * utterances.jsonl up to date (so a crash loses at most the utterance in progress). Stopping it
+ * leaves the bot in the channel. Events: "update" (status changed), "utterance" (UtteranceRecord),
+ * "resubscribe" (userId, error).
  */
 export class SessionRecorder extends EventEmitter {
   readonly startedAt = Date.now();
-  private connection: VoiceConnection | undefined;
   private state: RecordingStatus['state'] = 'connecting';
   private readonly participants = new Map<string, ParticipantState>();
   private readonly participantFile: Record<string, Participant> = {};
   private readonly skipped = new Map<string, { name: string; reason: string }>();
   private readonly active = new Map<string, Promise<void>>();
   private readonly resolving = new Set<string>();
-  private readonly reconnects = new ReconnectBudget();
   private stopping = false;
+  /** Removes this recording's listeners from the voice link and its connection. */
+  private unwire: () => void = () => {};
   private readonly info: SessionInfo & { source: string };
   private readonly log: (msg: string) => void;
 
   constructor(private readonly opts: SessionRecorderOptions) {
     super();
     this.log = opts.log ?? (() => {});
+    const { guild, channel } = opts.voice;
     this.info = {
       id: opts.sessionId,
       startedAt: this.startedAt,
-      guildId: opts.guild.id,
-      guildName: opts.guild.name,
-      channelId: opts.channel.id,
-      channelName: opts.channel.name,
+      guildId: guild.id,
+      guildName: guild.name,
+      channelId: channel.id,
+      channelName: channel.name,
       source: opts.source ?? 'bot',
       ...(opts.campaign ? { campaign: opts.campaign } : {}),
     };
   }
 
   status(): RecordingStatus {
+    const { guild, channel } = this.opts.voice;
     return {
       sessionId: this.opts.sessionId,
-      guildId: this.opts.guild.id,
-      guildName: this.opts.guild.name,
-      channelId: this.opts.channel.id,
-      channelName: this.opts.channel.name,
+      guildId: guild.id,
+      guildName: guild.name,
+      channelId: channel.id,
+      channelName: channel.name,
       startedAt: this.startedAt,
       state: this.state,
       participants: [...this.participants].map(([id, p]) => ({ id, ...p })),
       skipped: [...this.skipped].map(([id, s]) => ({ id, ...s })),
-      reconnects: this.reconnects.total,
+      reconnects: this.opts.voice.reconnectCount,
     };
   }
 
@@ -90,43 +89,27 @@ export class SessionRecorder extends EventEmitter {
     appendFileSync(paths.rolls(this.opts.sessionDir), JSON.stringify(note) + '\n');
   }
 
-  async start(): Promise<void> {
+  start(): void {
     mkdirSync(this.opts.sessionDir, { recursive: true });
     writeJson(paths.session(this.opts.sessionDir), this.info);
-    const { guild, channel } = this.opts;
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: guild.id,
-      adapterCreator: guild.voiceAdapterCreator,
-      selfDeaf: false,
-      selfMute: this.opts.selfMute ?? true,
-      debug: !!this.opts.debug,
-    });
-    this.connection = connection;
-    this.wire(connection);
-    try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-    } catch {
-      connection.destroy();
-      throw new Error(`Couldn't connect to #${channel.name} within 30s. Does the bot have View Channel and Connect there?`);
-    }
-    this.setState('recording');
-    this.log(`Recording #${channel.name} in ${guild.name} → ${this.opts.sessionId}`);
-  }
-
-  /** Plays this player's audio into the channel, on the same connection the recording uses. */
-  play(player: AudioPlayer): void {
-    this.connection?.subscribe(player);
+    const { voice } = this.opts;
+    this.wire(voice.voice);
+    const onState = (state: VoiceLinkState) => this.setState(RECORDING_STATE[state]);
+    voice.on('state', onState);
+    const unwireReceiver = this.unwire;
+    this.unwire = () => (voice.off('state', onState), unwireReceiver());
+    this.setState(RECORDING_STATE[voice.state]);
+    this.log(`Recording #${voice.channel.name} in ${voice.guild.name} → ${this.opts.sessionId}`);
   }
 
   async stop(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
     this.setState('stopping');
-    const connection = this.connection;
-    if (connection) for (const stream of connection.receiver.subscriptions.values()) stream.destroy();
+    this.unwire();
+    const receiver = this.opts.voice.voice.receiver;
+    for (const userId of this.active.keys()) receiver.subscriptions.get(userId)?.destroy();
     await Promise.all(this.active.values());
-    connection?.destroy();
     this.info.stoppedAt = Date.now();
     // The name and campaign can be changed in the app while recording: keep what's on disk.
     const { title, campaign, ...info } = this.info;
@@ -141,42 +124,17 @@ export class SessionRecorder extends EventEmitter {
     this.emit('update');
   }
 
+  /** Listens for who speaks on the connection (until `unwire`). */
   private wire(connection: VoiceConnection): void {
-    connection.on('error', (err) => this.log(`voice connection error: ${err.message}`));
-    if (this.opts.debug) connection.on('debug', this.opts.debug);
-    connection.on('stateChange', async (oldState, newState) => {
-      if (oldState.status === newState.status || this.stopping) return;
-      this.log(`voice connection: ${oldState.status} → ${newState.status}`);
-      if (newState.status === VoiceConnectionStatus.Ready) {
-        this.reconnects.connected();
-        this.setState('recording');
-      }
-      if (newState.status !== VoiceConnectionStatus.Disconnected) return;
-      this.setState('reconnecting');
-      try {
-        await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-        ]);
-      } catch {
-        const keepTrying = this.reconnects.attempt();
-        this.log(`voice disconnected; rejoining (reconnect ${this.reconnects.total})`);
-        if (!keepTrying || !connection.rejoin()) {
-          this.log('giving up on reconnecting');
-          this.emit('lost');
-        }
-      }
-    });
-
     const speaking = connection.receiver.speaking;
-    speaking.on('end', (userId) => {
+    const onEnd = (userId: string) => {
       const p = this.participants.get(userId);
       if (p?.speaking) {
         p.speaking = false;
         this.emit('update');
       }
-    });
-    speaking.on('start', (userId) => {
+    };
+    const onStart = (userId: string) => {
       const p = this.participants.get(userId);
       if (p && !p.speaking) {
         p.speaking = true;
@@ -185,12 +143,15 @@ export class SessionRecorder extends EventEmitter {
       if (this.stopping || this.active.has(userId) || this.resolving.has(userId) || this.skipped.has(userId)) return;
       this.resolving.add(userId);
       void this.admit(connection, userId).finally(() => this.resolving.delete(userId));
-    });
+    };
+    speaking.on('end', onEnd);
+    speaking.on('start', onStart);
+    this.unwire = () => (speaking.off('end', onEnd), speaking.off('start', onStart));
   }
 
   /** Decides whether to record a speaker (ignore list, bots, self), then starts recording them. */
   private async admit(connection: VoiceConnection, userId: string): Promise<void> {
-    const { guild } = this.opts;
+    const { guild } = this.opts.voice;
     const member = guild.members.cache.get(userId) ?? (await guild.members.fetch(userId).catch(() => undefined));
     const name = member?.displayName ?? userId;
     const reason = skipReason({ id: userId, bot: member?.user.bot ?? false }, this.opts.filter);
